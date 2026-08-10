@@ -12,7 +12,7 @@
     "conformance": "dokiworld-extension conformance dist/manifest.json"
   },
   "devDependencies": {
-    "@dokiworld/extension-sdk": "file:../dokiworld.git/packages/extension-sdk",
+    "@dokiworld/extension-sdk": "file:../../dokiworld.git/packages/extension-sdk",
     "esbuild": "^0.25.0"
   }
 }
