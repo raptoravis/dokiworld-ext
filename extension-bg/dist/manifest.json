@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "third-party.background-customizer",
+  "nameKey": "extension.name",
+  "displayName": "Background Customizer",
+  "version": "1.2.2",
+  "apiVersion": "^1.0.0",
+  "entry": "index.js",
+  "resources": [
+    {
+      "path": "index.js",
+      "kind": "module",
+      "bytes": 13821
+    },
+    {
+      "path": "styles.css",
+      "kind": "css",
+      "bytes": 3383
+    },
+    {
+      "path": "en.json",
+      "kind": "locale",
+      "bytes": 1149
+    },
+    {
+      "path": "zh-CN.json",
+      "kind": "locale",
+      "bytes": 1107
+    }
+  ],
+  "loadingOrder": 100
+}
