@@ -1,6 +1,8 @@
 {
   "schemaVersion": 1,
+  "version": "1.0.0",
   "id": "storyteller",
+  "kind": "world",
   "status": "active",
   "entry": "index.html",
   "protocolVersion": 2,
