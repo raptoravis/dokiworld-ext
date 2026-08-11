@@ -827,6 +827,22 @@ var hostedResultPending = false;
 var playerPersona = null;
 var activeVideo = null;
 var activeImage = null;
+var videoWatchdog = null;
+var VIDEO_LOAD_TIMEOUT_MS = 2e4;
+var VIDEO_PLAYBACK_GRACE_MS = 1e4;
+function clearVideoWatchdog() {
+  if (videoWatchdog !== null) {
+    window.clearTimeout(videoWatchdog);
+    videoWatchdog = null;
+  }
+}
+function armVideoWatchdog(item, timeoutMs = VIDEO_LOAD_TIMEOUT_MS) {
+  clearVideoWatchdog();
+  videoWatchdog = window.setTimeout(() => {
+    videoWatchdog = null;
+    if (activeVideo === item) renderNext();
+  }, timeoutMs);
+}
 var replayingImage = false;
 function isRecord3(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -968,6 +984,23 @@ function orderedBeats() {
 }
 function nextConfiguredBeat(beat) {
   if (typeof beat?.nextBeatId === "string") return beatsById.get(beat.nextBeatId) || null;
+  if (typeof beat?.id === "string") {
+    const inferredTargetIds = /* @__PURE__ */ new Set();
+    beatsById.forEach((candidate) => {
+      const options = Array.isArray(candidate?.choices?.options) ? candidate.choices.options : [];
+      if (!options.some((option) => option?.nextBeatId === beat.id)) return;
+      options.forEach((option) => {
+        if (option?.nextBeatId === beat.id) return;
+        const sibling = beatsById.get(option?.nextBeatId) || null;
+        if (typeof sibling?.nextBeatId === "string" && beatsById.has(sibling.nextBeatId)) {
+          inferredTargetIds.add(sibling.nextBeatId);
+        }
+      });
+    });
+    if (inferredTargetIds.size === 1) {
+      return beatsById.get([...inferredTargetIds][0]) || null;
+    }
+  }
   if (beat?.choices || linkedBeatIds.size > 0) return null;
   const beats = orderedBeats();
   const index = beats.findIndex((candidate) => candidate.id === beat?.id);
@@ -1178,10 +1211,23 @@ function renderVideo(item) {
   elements.caption.textContent = typeof item.segment.caption === "string" ? item.segment.caption : "";
   elements.mediaView.classList.remove("is-hidden");
   showControls();
+  armVideoWatchdog(item);
+  elements.video.addEventListener("loadedmetadata", () => {
+    if (activeVideo !== item || !Number.isFinite(elements.video.duration)) return;
+    armVideoWatchdog(
+      item,
+      Math.max(
+        VIDEO_LOAD_TIMEOUT_MS,
+        elements.video.duration * 1e3 + VIDEO_PLAYBACK_GRACE_MS
+      )
+    );
+  }, { once: true });
   void elements.video.play().catch(() => {
     elements.video.muted = true;
     return elements.video.play();
-  }).catch(() => void 0);
+  }).catch(() => {
+    if (activeVideo === item) renderNext();
+  });
 }
 function appendCompletedVideo(item) {
   const src = safeUrl(item?.segment?.mediaUrl);
@@ -1310,7 +1356,9 @@ function renderChoices(item) {
     button.append(marker, label);
     button.addEventListener("click", () => {
       const targetBeatId = typeof option.nextBeatId === "string" ? option.nextBeatId : "";
-      if (item.segment.localAuthored === true && targetBeatId && !pathNeedsLlm(targetBeatId)) {
+      const deterministicItems = targetBeatId ? localPathItems(targetBeatId) : [];
+      const hasDeterministicProgress = deterministicItems.some(({ segment }) => ["image", "video", "game", "choices"].includes(segment.type));
+      if (item.segment.localAuthored === true && targetBeatId && (!pathNeedsLlm(targetBeatId) || hasDeterministicProgress)) {
         playConfiguredPath(targetBeatId);
         return;
       }
@@ -1603,6 +1651,7 @@ function showEnd() {
   window.setTimeout(() => elements.continueReply.focus(), 80);
 }
 function renderNext() {
+  clearVideoWatchdog();
   waitingForHost = false;
   if (activeImage) {
     preserveCompletedImage(activeImage);
@@ -1723,6 +1772,9 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && replayingImage) closeReplayedImage();
 });
 elements.video.addEventListener("ended", renderNext);
+elements.video.addEventListener("error", () => {
+  if (activeVideo) renderNext();
+});
 elements.restart.addEventListener("click", restartEpisode);
 elements.errorRetry.addEventListener("click", restartEpisode);
 elements.continueForm.addEventListener("submit", (event) => {
