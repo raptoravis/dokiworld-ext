@@ -2,6 +2,7 @@ import {
   createAppClient,
   createAppHost,
 } from "@dokiworld/app-sdk";
+import { createEpisodeClientExtension } from "@dokiworld/app-sdk/episode";
 import { createGameOptions } from "./game-options.js";
 
 const WORLD_ID = "storyteller";
@@ -220,6 +221,7 @@ const dokiworld = createAppClient({
   appId: WORLD_ID,
   extensions: ["world", "episode", "chat", "checkpoint"],
 });
+const episode = createEpisodeClientExtension(dokiworld);
 let locale = "en";
 let copy = COPY.en;
 let experience = null;
@@ -317,9 +319,9 @@ function speak(text, force = false) {
   window.speechSynthesis.speak(utterance);
 }
 
-function post(type, payload = {}) {
+function post(event) {
   if (!dokiworld.runId) return;
-  dokiworld.send(type, payload);
+  episode.send(event);
 }
 
 function showWaiting() {
@@ -513,7 +515,7 @@ function startConfiguredExperience() {
   const root = configuredRoot();
   if (!root || pathNeedsLlm(root.id)) {
     showWaiting();
-    post("dokiworld-app-episode-start");
+    post({ type: "episode.start" });
     return;
   }
   playConfiguredPath(root.id);
@@ -588,7 +590,7 @@ function renderDialogue(first) {
       regenerate.addEventListener("click", () => {
         if (waitingForHost) return;
         showChatWaiting();
-        post("dokiworld-app-chat-regenerate", { playerPersona });
+        post({ type: "chat.regenerate", playerPersona });
       });
       actions.append(regenerate);
       content.append(actions);
@@ -713,7 +715,7 @@ function submitReply(value) {
   group.append(speaker, bubble);
   elements.lines.append(group);
   showChatWaiting();
-  post("dokiworld-app-episode-reply", { playerInput, playerPersona });
+  post({ type: "episode.reply", playerInput, playerPersona });
 }
 
 function appendGeneratedMedia(type, url) {
@@ -785,7 +787,8 @@ function renderChoices(item) {
         return;
       }
       showWaiting();
-      post("dokiworld-app-episode-choice", {
+      post({
+        type: "episode.choice",
         beatId: item.segment.beatId,
         optionId: option.id,
       });
@@ -1016,7 +1019,8 @@ function initializeActiveGame() {
         const result = output.data;
         window.queueMicrotask(() => completeLocalConfiguredApp(result));
       } else {
-        post("dokiworld-app-episode-game-result", {
+        post({
+          type: "episode.gameResult",
           configId: current.config.configId,
           result: output.data,
         });
@@ -1075,7 +1079,7 @@ function requestAction(item) {
     return;
   }
   showWaiting();
-  post("dokiworld-app-episode-action", { beatId });
+  post({ type: "episode.action", beatId });
 }
 
 function showEnd() {
@@ -1152,8 +1156,8 @@ function restartEpisode() {
     return;
   }
   showWaiting();
-  post("dokiworld-app-episode-restart");
-  window.setTimeout(() => post("dokiworld-app-episode-start"), 0);
+  post({ type: "episode.restart" });
+  window.setTimeout(() => post({ type: "episode.start" }), 0);
 }
 
 function initialize(message) {
@@ -1251,7 +1255,7 @@ elements.suggest.addEventListener("click", () => {
   elements.suggestionPanel.replaceChildren();
   elements.suggestionPanel.classList.remove("is-hidden");
   elements.chatStatus.textContent = copy.thinking;
-  post("dokiworld-app-chat-suggest", { playerPersona });
+  post({ type: "chat.suggest", playerPersona });
 });
 
 elements.dialogueView.addEventListener("scroll", () => {
@@ -1290,7 +1294,7 @@ function requestGeneratedMedia(mediaType) {
   elements.chatStatus.textContent = mediaType === "video" ? copy.generatingVideo : copy.generatingImage;
   elements.generateImage.disabled = true;
   elements.generateVideo.disabled = true;
-  post("dokiworld-app-chat-generate-media", { mediaType, playerPersona });
+  post({ type: "chat.generateMedia", mediaType, playerPersona });
 }
 elements.generateImage.addEventListener("click", () => requestGeneratedMedia("image"));
 elements.generateVideo.addEventListener("click", () => requestGeneratedMedia("video"));
@@ -1336,24 +1340,25 @@ dokiworld.connect({
     initialize({ locale: nextLocale, ...data });
   },
   onMessage: (envelope) => {
-  const message = { type: envelope.type, ...envelope.payload };
-  if (message.type === "dokiworld-app-episode") acceptEpisode(message.utterances);
-  if (message.type === "dokiworld-app-chat-regenerated") {
+  const message = episode.receive(envelope);
+  if (!message) return;
+  if (message.type === "episode.content") acceptEpisode(message.utterances);
+  if (message.type === "chat.regenerated") {
       elements.lines.querySelector(".message-group.is-ai:last-of-type")?.remove();
       acceptEpisode(message.utterances);
   }
-  if (message.type === "dokiworld-app-chat-media") {
+  if (message.type === "chat.media") {
       elements.chatStatus.textContent = "";
       elements.generateImage.disabled = false;
       elements.generateVideo.disabled = false;
       if (typeof message.url === "string") appendGeneratedMedia(message.mediaType, message.url);
   }
-  if (message.type === "dokiworld-app-chat-media-error") {
+  if (message.type === "chat.mediaError") {
       elements.chatStatus.textContent = typeof message.error === "string" ? message.error : copy.tryAgain;
       elements.generateImage.disabled = false;
       elements.generateVideo.disabled = false;
   }
-  if (message.type === "dokiworld-app-chat-suggestions") {
+  if (message.type === "chat.suggestions") {
       elements.chatStatus.textContent = "";
       elements.suggestionPanel.replaceChildren();
       const suggestions = Array.isArray(message.suggestions)
@@ -1373,9 +1378,9 @@ dokiworld.connect({
       });
       elements.suggestionPanel.classList.toggle("is-hidden", suggestions.length === 0);
   }
-  if (message.type === "dokiworld-app-episode-game" && pendingAction) void openConfiguredApp(message.gameConfig);
-  if (message.type === "dokiworld-app-episode-fixed-game-result" && isRecord(message.result)) completeHostedConfiguredApp(message.result);
-  if (message.type === "dokiworld-app-episode-game-resolved" && isRecord(message.result) && Array.isArray(message.utterances)) completeHostedConfiguredApp(message.result, message.utterances);
-  if (message.type === "dokiworld-app-episode-error") showError();
+  if (message.type === "episode.game" && pendingAction) void openConfiguredApp(message.gameConfig);
+  if (message.type === "episode.fixedGameResult") completeHostedConfiguredApp(message.result);
+  if (message.type === "episode.gameResolved") completeHostedConfiguredApp(message.result, message.utterances);
+  if (message.type === "episode.error") showError();
   },
 });

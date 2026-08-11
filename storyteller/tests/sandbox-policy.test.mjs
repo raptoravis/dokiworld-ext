@@ -20,3 +20,9 @@ test("opaque Storyteller sandbox receives the App catalog from its host", async 
   assert.match(source, /appCatalog = Array\.isArray\(message\.apps\)/);
   assert.match(source, /targetOrigin: "\*"/);
 });
+
+test("Storyteller business code uses the typed SDK extension instead of wire messages", async () => {
+  const source = await readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(source, /createEpisodeClientExtension/);
+  assert.doesNotMatch(source, /dokiworld-app-(?:episode|chat)/);
+});

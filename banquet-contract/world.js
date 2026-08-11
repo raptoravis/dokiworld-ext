@@ -2,6 +2,7 @@ import {
   createAppClient,
   createAppHost,
 } from "@dokiworld/app-sdk";
+import { createEpisodeClientExtension } from "@dokiworld/app-sdk/episode";
 
 const WORLD_ID = "banquet-contract";
 const CHECKPOINT_CONTRACT = "doki.world.banquet-contract";
@@ -185,6 +186,7 @@ const dokiworld = createAppClient({
   appId: WORLD_ID,
   extensions: ["world", "episode", "checkpoint"],
 });
+const episode = createEpisodeClientExtension(dokiworld);
 let phase = "cover";
 let sceneNumber = 0;
 let choice = "A";
@@ -411,9 +413,9 @@ function readSafeMediaUrl(value) {
   }
 }
 
-function postEpisodeEvent(type, payload = {}) {
+function postEpisodeEvent(event) {
   if (!dokiworld.runId || !episodeMode) return;
-  postWorldEvent(type, payload);
+  episode.send(event);
 }
 
 function postWorldEvent(type, payload = {}) {
@@ -947,7 +949,8 @@ function renderEpisodeChoices(item) {
         void playScene(2);
         return;
       }
-      postEpisodeEvent("dokiworld-app-episode-choice", {
+      postEpisodeEvent({
+        type: "episode.choice",
         beatId: segment.beatId,
         optionId: option.id,
       });
@@ -1071,7 +1074,8 @@ function renderNextEpisodeSegment() {
     episodeWaiting = true;
     episodeContinue.classList.add("is-hidden");
     episodeRetry.classList.add("is-hidden");
-    postEpisodeEvent("dokiworld-app-episode-action", {
+    postEpisodeEvent({
+      type: "episode.action",
       beatId: item.segment.beatId,
     });
   } else {
@@ -1210,7 +1214,7 @@ function startGame() {
 function startConfiguredGame(config) {
   const gameId = typeof config?.gameId === "string" ? config.gameId.trim() : "";
   if (!/^[a-z0-9][a-z0-9-]{0,127}$/.test(gameId)) {
-    postEpisodeEvent("dokiworld-app-world-error", { code: "world_game_unavailable" });
+    postWorldError("world_game_unavailable");
     return;
   }
   activeGameId = gameId;
@@ -1280,7 +1284,8 @@ function connectGameHost() {
         } else {
           gameLoading.classList.remove("is-hidden");
         }
-        postEpisodeEvent("dokiworld-app-episode-game-result", {
+        postEpisodeEvent({
+          type: "episode.gameResult",
           result,
           configId: activeGameConfig?.configId,
         });
@@ -1342,7 +1347,7 @@ function beginStory() {
     return;
   }
   episodeStarted = true;
-  postEpisodeEvent("dokiworld-app-episode-start");
+  postEpisodeEvent({ type: "episode.start" });
   if (episodeQueue.length > 0) renderNextEpisodeSegment();
   else showEpisodeWaiting();
 }
@@ -1362,7 +1367,7 @@ episodeRetry.addEventListener("click", () => {
   if (episodeWaiting) return;
   episodeWaiting = true;
   showEpisodeWaiting();
-  postEpisodeEvent("dokiworld-app-episode-start");
+  postEpisodeEvent({ type: "episode.start" });
 });
 videoToggle.addEventListener("click", async () => {
   if (storyVideo.paused || storyVideo.ended) {
@@ -1424,7 +1429,7 @@ document.querySelector("#restart-story").addEventListener("click", () => {
     videoChoiceOverlay.classList.add("is-hidden");
     videoNoteOverlay.classList.add("is-hidden");
     resetPreparedGame();
-    postEpisodeEvent("dokiworld-app-episode-restart");
+    postEpisodeEvent({ type: "episode.restart" });
   }
   setPhase("cover");
 });
@@ -1436,36 +1441,40 @@ if (window.parent !== window) {
       initialize(nextLocale, data.media, data.experience, data.checkpoint);
     },
     onMessage: (envelope) => {
-      const message = { type: envelope.type, ...envelope.payload };
-  if (message.type === "dokiworld-app-checkpoint-cleared") {
-    world.dataset.checkpointState = "cleared";
-  } else if (!episodeMode) {
-    return;
-  } else if (message.type === "dokiworld-app-episode-resuming") {
-    showEpisodeWaiting();
-  } else if (message.type === "dokiworld-app-episode") {
-    acceptEpisodeUtterances(message.utterances);
-  } else if (message.type === "dokiworld-app-episode-game") {
-    startConfiguredGame(message.gameConfig);
-  } else if (message.type === "dokiworld-app-episode-fixed-game-result") {
-    episodeWaiting = false;
-    showResult(message.result);
-  } else if (message.type === "dokiworld-app-episode-error") {
-    episodeWaiting = false;
-    world.dataset.episodeState = "error";
-    setLilyTransition(false);
-    episodeTitle.textContent = experience?.title || copy.episodeEyebrow;
-    episodeContent.replaceChildren();
-    const error = document.createElement("p");
-    error.className = "episode-line narration";
-    error.textContent = message.code === "authentication_required"
-      ? copy.episodeAuthenticationRequired
-      : copy.episodeError;
-    episodeContent.append(error);
-    episodeContinue.classList.add("is-hidden");
-    episodeRetry.classList.remove("is-hidden");
-    setPhase("episode");
-  }
+      if (envelope.type === "dokiworld-app-checkpoint-cleared") {
+        world.dataset.checkpointState = "cleared";
+        return;
+      }
+      if (!episodeMode) return;
+      const message = episode.receive(envelope);
+      if (!message) return;
+      if (message.type === "episode.resuming") {
+        showEpisodeWaiting();
+      } else if (message.type === "episode.content") {
+        acceptEpisodeUtterances(message.utterances);
+      } else if (message.type === "episode.game") {
+        startConfiguredGame(message.gameConfig);
+      } else if (message.type === "episode.fixedGameResult") {
+        episodeWaiting = false;
+        showResult(message.result);
+      } else if (message.type === "episode.gameResolved") {
+        acceptEpisodeUtterances(message.utterances);
+      } else if (message.type === "episode.error") {
+        episodeWaiting = false;
+        world.dataset.episodeState = "error";
+        setLilyTransition(false);
+        episodeTitle.textContent = experience?.title || copy.episodeEyebrow;
+        episodeContent.replaceChildren();
+        const error = document.createElement("p");
+        error.className = "episode-line narration";
+        error.textContent = message.code === "authentication_required"
+          ? copy.episodeAuthenticationRequired
+          : copy.episodeError;
+        episodeContent.append(error);
+        episodeContinue.classList.add("is-hidden");
+        episodeRetry.classList.remove("is-hidden");
+        setPhase("episode");
+      }
     },
   });
 }

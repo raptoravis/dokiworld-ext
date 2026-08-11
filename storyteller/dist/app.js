@@ -487,6 +487,96 @@ function createAppHost({
   });
 }
 
+// ../../dokiworld.git/packages/app-sdk/src/episode.js
+var CLIENT_WIRE_TYPES = Object.freeze({
+  "episode.start": "dokiworld-app-episode-start",
+  "episode.restart": "dokiworld-app-episode-restart",
+  "episode.choice": "dokiworld-app-episode-choice",
+  "episode.reply": "dokiworld-app-episode-reply",
+  "episode.action": "dokiworld-app-episode-action",
+  "episode.gameResult": "dokiworld-app-episode-game-result",
+  "chat.regenerate": "dokiworld-app-chat-regenerate",
+  "chat.suggest": "dokiworld-app-chat-suggest",
+  "chat.generateMedia": "dokiworld-app-chat-generate-media"
+});
+var HOST_WIRE_TYPES = Object.freeze({
+  "episode.content": "dokiworld-app-episode",
+  "episode.resuming": "dokiworld-app-episode-resuming",
+  "episode.error": "dokiworld-app-episode-error",
+  "episode.game": "dokiworld-app-episode-game",
+  "episode.fixedGameResult": "dokiworld-app-episode-fixed-game-result",
+  "episode.gameResolved": "dokiworld-app-episode-game-resolved",
+  "chat.regenerated": "dokiworld-app-chat-regenerated",
+  "chat.suggestions": "dokiworld-app-chat-suggestions",
+  "chat.media": "dokiworld-app-chat-media",
+  "chat.mediaError": "dokiworld-app-chat-media-error"
+});
+var isRecord2 = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
+var isString = (value) => typeof value === "string";
+var isOptionalRecord = (value) => value === void 0 || value === null || isRecord2(value);
+var noPayload = (payload) => Object.keys(payload).length === 0;
+var CLIENT_VALIDATORS = Object.freeze({
+  "episode.start": noPayload,
+  "episode.restart": noPayload,
+  "episode.choice": (payload) => isString(payload.beatId) && isString(payload.optionId),
+  "episode.reply": (payload) => isString(payload.playerInput) && isOptionalRecord(payload.playerPersona),
+  "episode.action": (payload) => isString(payload.beatId),
+  "episode.gameResult": (payload) => (payload.configId === void 0 || isString(payload.configId)) && isRecord2(payload.result),
+  "chat.regenerate": (payload) => isOptionalRecord(payload.playerPersona),
+  "chat.suggest": (payload) => isOptionalRecord(payload.playerPersona),
+  "chat.generateMedia": (payload) => ["image", "video"].includes(payload.mediaType) && isOptionalRecord(payload.playerPersona)
+});
+var HOST_VALIDATORS = Object.freeze({
+  "episode.content": (payload) => Array.isArray(payload.utterances),
+  "episode.resuming": noPayload,
+  "episode.error": (payload) => isString(payload.code),
+  "episode.game": (payload) => isRecord2(payload.gameConfig),
+  "episode.fixedGameResult": (payload) => isRecord2(payload.result),
+  "episode.gameResolved": (payload) => isRecord2(payload.result) && Array.isArray(payload.utterances),
+  "chat.regenerated": (payload) => Array.isArray(payload.utterances),
+  "chat.suggestions": (payload) => Array.isArray(payload.suggestions) && payload.suggestions.every(isString),
+  "chat.media": (payload) => ["image", "video"].includes(payload.mediaType) && isString(payload.url),
+  "chat.mediaError": (payload) => isString(payload.error)
+});
+function reverseTypes(types) {
+  return Object.freeze(Object.fromEntries(Object.entries(types).map(([semantic, wire]) => [wire, semantic])));
+}
+var CLIENT_SEMANTIC_TYPES = reverseTypes(CLIENT_WIRE_TYPES);
+var HOST_SEMANTIC_TYPES = reverseTypes(HOST_WIRE_TYPES);
+function splitEvent(event) {
+  if (!isRecord2(event) || !isString(event.type)) return null;
+  const { type, ...payload } = event;
+  return { type, payload };
+}
+function createDirectionalExtension(channel, outgoingTypes, outgoingValidators, incomingTypes, incomingValidators) {
+  if (!channel || typeof channel.send !== "function") throw new Error("Invalid episode extension channel");
+  return Object.freeze({
+    send(event) {
+      const parsed = splitEvent(event);
+      const wireType = parsed && outgoingTypes[parsed.type];
+      const validate = parsed && outgoingValidators[parsed.type];
+      if (!wireType || !validate?.(parsed.payload)) throw new Error("Invalid episode extension event");
+      return channel.send(wireType, parsed.payload);
+    },
+    receive(message) {
+      if (!isRecord2(message) || !isString(message.type) || !isRecord2(message.payload)) return null;
+      const semanticType = incomingTypes[message.type];
+      const validate = semanticType && incomingValidators[semanticType];
+      if (!semanticType || !validate?.(message.payload)) return null;
+      return Object.freeze({ type: semanticType, ...message.payload });
+    }
+  });
+}
+function createEpisodeClientExtension(client) {
+  return createDirectionalExtension(
+    client,
+    CLIENT_WIRE_TYPES,
+    CLIENT_VALIDATORS,
+    HOST_SEMANTIC_TYPES,
+    HOST_VALIDATORS
+  );
+}
+
 // src/game-options.js
 function createGameOptions(config) {
   return Object.fromEntries(Object.entries({
@@ -714,6 +804,7 @@ var dokiworld = createAppClient({
   appId: WORLD_ID,
   extensions: ["world", "episode", "chat", "checkpoint"]
 });
+var episode = createEpisodeClientExtension(dokiworld);
 var locale = "en";
 var copy = COPY.en;
 var experience = null;
@@ -736,7 +827,7 @@ var playerPersona = null;
 var activeVideo = null;
 var activeImage = null;
 var replayingImage = false;
-function isRecord2(value) {
+function isRecord3(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 function safeUrl(value) {
@@ -804,9 +895,9 @@ function speak(text, force = false) {
   utterance.lang = locale === "zh-cn" ? "zh-CN" : "en-US";
   window.speechSynthesis.speak(utterance);
 }
-function post(type, payload = {}) {
+function post(event) {
   if (!dokiworld.runId) return;
-  dokiworld.send(type, payload);
+  episode.send(event);
 }
 function showWaiting() {
   hideViews();
@@ -866,13 +957,13 @@ function showControls() {
 function episodeItems(utterances) {
   if (!Array.isArray(utterances)) return [];
   return utterances.flatMap((utterance) => {
-    if (!isRecord2(utterance) || !Array.isArray(utterance.segments)) return [];
+    if (!isRecord3(utterance) || !Array.isArray(utterance.segments)) return [];
     const speakerName = typeof utterance.speakerName === "string" ? utterance.speakerName.trim() : "";
-    return utterance.segments.filter(isRecord2).map((segment) => ({ segment, speakerName }));
+    return utterance.segments.filter(isRecord3).map((segment) => ({ segment, speakerName }));
   });
 }
 function orderedBeats() {
-  return Array.isArray(runtimeConfig?.beats) ? [...runtimeConfig.beats].filter(isRecord2).sort((a, b) => Number(a.position || 0) - Number(b.position || 0) || String(a.id).localeCompare(String(b.id))) : [];
+  return Array.isArray(runtimeConfig?.beats) ? [...runtimeConfig.beats].filter(isRecord3).sort((a, b) => Number(a.position || 0) - Number(b.position || 0) || String(a.id).localeCompare(String(b.id))) : [];
 }
 function nextConfiguredBeat(beat) {
   if (typeof beat?.nextBeatId === "string") return beatsById.get(beat.nextBeatId) || null;
@@ -890,7 +981,7 @@ function pathNeedsLlm(startBeatId) {
   const visited = /* @__PURE__ */ new Set();
   while (beat && !visited.has(beat.id)) {
     visited.add(beat.id);
-    if (Array.isArray(beat.utterances) && beat.utterances.some((utterance) => isRecord2(utterance) && utterance.source === "llm")) return true;
+    if (Array.isArray(beat.utterances) && beat.utterances.some((utterance) => isRecord3(utterance) && utterance.source === "llm")) return true;
     if (beat.choices || beat.action) return false;
     beat = nextConfiguredBeat(beat);
   }
@@ -902,7 +993,7 @@ function localPathItems(startBeatId) {
   const visited = /* @__PURE__ */ new Set();
   while (beat && !visited.has(beat.id)) {
     visited.add(beat.id);
-    const assetRefs = Array.isArray(beat.assets) ? [...beat.assets].filter(isRecord2).sort((a, b) => Number(a.position || 0) - Number(b.position || 0)) : [];
+    const assetRefs = Array.isArray(beat.assets) ? [...beat.assets].filter(isRecord3).sort((a, b) => Number(a.position || 0) - Number(b.position || 0)) : [];
     assetRefs.forEach((reference) => {
       const asset = assetsById.get(reference.assetId);
       if (!asset || !safeUrl(asset.url)) return;
@@ -919,16 +1010,16 @@ function localPathItems(startBeatId) {
       });
     });
     (Array.isArray(beat.utterances) ? beat.utterances : []).forEach((utterance) => {
-      if (!isRecord2(utterance) || utterance.source === "llm") return;
+      if (!isRecord3(utterance) || utterance.source === "llm") return;
       (Array.isArray(utterance.segments) ? utterance.segments : []).forEach((segment) => {
-        if (!isRecord2(segment)) return;
+        if (!isRecord3(segment)) return;
         items.push({
           speakerName: experience?.title || "",
           segment: { ...segment, beatId: beat.id, localAuthored: true }
         });
       });
     });
-    if (isRecord2(beat.choices)) {
+    if (isRecord3(beat.choices)) {
       items.push({
         speakerName: experience?.title || "",
         segment: {
@@ -942,7 +1033,7 @@ function localPathItems(startBeatId) {
       });
       break;
     }
-    if (isRecord2(beat.action)) {
+    if (isRecord3(beat.action)) {
       items.push({
         speakerName: experience?.title || "",
         segment: {
@@ -974,7 +1065,7 @@ function startConfiguredExperience() {
   const root = configuredRoot();
   if (!root || pathNeedsLlm(root.id)) {
     showWaiting();
-    post("dokiworld-app-episode-start");
+    post({ type: "episode.start" });
     return;
   }
   playConfiguredPath(root.id);
@@ -1040,7 +1131,7 @@ function renderDialogue(first) {
       regenerate.addEventListener("click", () => {
         if (waitingForHost) return;
         showChatWaiting();
-        post("dokiworld-app-chat-regenerate", { playerPersona });
+        post({ type: "chat.regenerate", playerPersona });
       });
       actions.append(regenerate);
       content.append(actions);
@@ -1161,7 +1252,7 @@ function submitReply(value) {
   group.append(speaker, bubble);
   elements.lines.append(group);
   showChatWaiting();
-  post("dokiworld-app-episode-reply", { playerInput, playerPersona });
+  post({ type: "episode.reply", playerInput, playerPersona });
 }
 function appendGeneratedMedia(type, url) {
   const src = safeUrl(url);
@@ -1200,7 +1291,7 @@ function appendGeneratedMedia(type, url) {
   elements.dialogueView.scrollTo({ top: elements.dialogueView.scrollHeight, behavior: "smooth" });
 }
 function renderChoices(item) {
-  const options = Array.isArray(item.segment.options) ? item.segment.options.filter((option) => isRecord2(option) && typeof option.id === "string") : [];
+  const options = Array.isArray(item.segment.options) ? item.segment.options.filter((option) => isRecord3(option) && typeof option.id === "string") : [];
   if (!options.length) return renderNext();
   presentedSegments += 1;
   hideViews();
@@ -1227,7 +1318,8 @@ function renderChoices(item) {
         return;
       }
       showWaiting();
-      post("dokiworld-app-episode-choice", {
+      post({
+        type: "episode.choice",
         beatId: item.segment.beatId,
         optionId: option.id
       });
@@ -1238,7 +1330,7 @@ function renderChoices(item) {
   window.setTimeout(() => elements.choices.querySelector("button")?.focus(), 80);
 }
 async function findConfiguredApp(gameId) {
-  const app = appCatalog.find((entry) => isRecord2(entry) && entry.id === gameId && entry.status !== "disabled" && entry.protocolVersion === 2);
+  const app = appCatalog.find((entry) => isRecord3(entry) && entry.id === gameId && entry.status !== "disabled" && entry.protocolVersion === 2);
   if (!app || !safeUrl(app.entryUrl)) throw new Error("app unavailable");
   return app;
 }
@@ -1293,7 +1385,7 @@ function renderGameResult(result, configuredBeat, config, onContinue = null) {
   const normalizedScore = Number(result.normalizedScore);
   score.textContent = Number.isFinite(normalizedScore) ? `${Math.round(Math.max(0, Math.min(100, normalizedScore)))} / 100` : copy.resultComplete;
   summary.append(scoreLabel, score);
-  const metrics = isRecord2(result.metrics) ? result.metrics : {};
+  const metrics = isRecord3(result.metrics) ? result.metrics : {};
   const metricDefinitions = [
     ["points", copy.resultPoints],
     ["moves", copy.resultMoves],
@@ -1402,7 +1494,7 @@ function initializeActiveGame() {
   const target = elements.appFrame.contentWindow;
   if (!target) return;
   const current = activeApp;
-  const runtime = isRecord2(current.app.runtime) ? current.app.runtime : {};
+  const runtime = isRecord3(current.app.runtime) ? current.app.runtime : {};
   current.host = createAppHost({
     appId: current.app.id,
     runId: activeApp.runId,
@@ -1428,12 +1520,13 @@ function initializeActiveGame() {
       else closeConfiguredApp(true);
     },
     onComplete: async (output) => {
-      if (!isRecord2(output.data)) return { status: "rejected", reason: "invalid_result" };
+      if (!isRecord3(output.data)) return { status: "rejected", reason: "invalid_result" };
       if (localActionBeat) {
         const result = output.data;
         window.queueMicrotask(() => completeLocalConfiguredApp(result));
       } else {
-        post("dokiworld-app-episode-game-result", {
+        post({
+          type: "episode.gameResult",
           configId: current.config.configId,
           result: output.data
         });
@@ -1456,7 +1549,7 @@ function completeLocalConfiguredApp(result = null) {
   const config = activeApp?.config || pendingAction?.gameConfig || {};
   localActionBeat = null;
   closeConfiguredApp(false);
-  if (isRecord2(result)) {
+  if (isRecord3(result)) {
     renderGameResult(result, beat, config);
     return;
   }
@@ -1483,7 +1576,7 @@ function requestAction(item) {
     return;
   }
   showWaiting();
-  post("dokiworld-app-episode-action", { beatId });
+  post({ type: "episode.action", beatId });
 }
 function showEnd() {
   if (elements.lines.childElementCount > 0) {
@@ -1556,14 +1649,14 @@ function restartEpisode() {
     return;
   }
   showWaiting();
-  post("dokiworld-app-episode-restart");
-  window.setTimeout(() => post("dokiworld-app-episode-start"), 0);
+  post({ type: "episode.restart" });
+  window.setTimeout(() => post({ type: "episode.start" }), 0);
 }
 function initialize(message) {
   locale = String(message.locale).toLowerCase().startsWith("zh") ? "zh-cn" : "en";
   copy = COPY[locale];
-  appCatalog = Array.isArray(message.apps) ? message.apps.filter(isRecord2) : [];
-  const candidate = isRecord2(message.experience) ? message.experience : {};
+  appCatalog = Array.isArray(message.apps) ? message.apps.filter(isRecord3) : [];
+  const candidate = isRecord3(message.experience) ? message.experience : {};
   experience = {
     characterId: typeof candidate.characterId === "string" ? candidate.characterId : "",
     title: typeof candidate.title === "string" ? candidate.title : "",
@@ -1572,9 +1665,9 @@ function initialize(message) {
     avatarUrl: safeUrl(candidate.avatarUrl) || safeUrl(candidate.portraitUrl),
     tags: Array.isArray(candidate.tags) ? candidate.tags.filter((tag) => typeof tag === "string" && tag.trim()).slice(0, 2) : []
   };
-  runtimeConfig = isRecord2(candidate.config) ? candidate.config : null;
-  const beats = Array.isArray(runtimeConfig?.beats) ? runtimeConfig.beats.filter(isRecord2) : [];
-  const assets = Array.isArray(runtimeConfig?.assets) ? runtimeConfig.assets.filter(isRecord2) : [];
+  runtimeConfig = isRecord3(candidate.config) ? candidate.config : null;
+  const beats = Array.isArray(runtimeConfig?.beats) ? runtimeConfig.beats.filter(isRecord3) : [];
+  const assets = Array.isArray(runtimeConfig?.assets) ? runtimeConfig.assets.filter(isRecord3) : [];
   beatsById = new Map(beats.map((beat) => [beat.id, beat]));
   assetsById = new Map(assets.map((asset) => [asset.id, asset]));
   linkedBeatIds = new Set(beats.flatMap((beat) => [
@@ -1647,7 +1740,7 @@ elements.suggest.addEventListener("click", () => {
   elements.suggestionPanel.replaceChildren();
   elements.suggestionPanel.classList.remove("is-hidden");
   elements.chatStatus.textContent = copy.thinking;
-  post("dokiworld-app-chat-suggest", { playerPersona });
+  post({ type: "chat.suggest", playerPersona });
 });
 elements.dialogueView.addEventListener("scroll", () => {
   const distance = elements.dialogueView.scrollHeight - elements.dialogueView.scrollTop - elements.dialogueView.clientHeight;
@@ -1683,7 +1776,7 @@ function requestGeneratedMedia(mediaType) {
   elements.chatStatus.textContent = mediaType === "video" ? copy.generatingVideo : copy.generatingImage;
   elements.generateImage.disabled = true;
   elements.generateVideo.disabled = true;
-  post("dokiworld-app-chat-generate-media", { mediaType, playerPersona });
+  post({ type: "chat.generateMedia", mediaType, playerPersona });
 }
 elements.generateImage.addEventListener("click", () => requestGeneratedMedia("image"));
 elements.generateVideo.addEventListener("click", () => requestGeneratedMedia("video"));
@@ -1723,28 +1816,29 @@ elements.appDialog.addEventListener("cancel", (event) => {
 elements.appFrame.addEventListener("load", initializeActiveGame);
 dokiworld.connect({
   onInit: ({ locale: nextLocale, input }) => {
-    const data = isRecord2(input.data) ? input.data : {};
+    const data = isRecord3(input.data) ? input.data : {};
     initialize({ locale: nextLocale, ...data });
   },
   onMessage: (envelope) => {
-    const message = { type: envelope.type, ...envelope.payload };
-    if (message.type === "dokiworld-app-episode") acceptEpisode(message.utterances);
-    if (message.type === "dokiworld-app-chat-regenerated") {
+    const message = episode.receive(envelope);
+    if (!message) return;
+    if (message.type === "episode.content") acceptEpisode(message.utterances);
+    if (message.type === "chat.regenerated") {
       elements.lines.querySelector(".message-group.is-ai:last-of-type")?.remove();
       acceptEpisode(message.utterances);
     }
-    if (message.type === "dokiworld-app-chat-media") {
+    if (message.type === "chat.media") {
       elements.chatStatus.textContent = "";
       elements.generateImage.disabled = false;
       elements.generateVideo.disabled = false;
       if (typeof message.url === "string") appendGeneratedMedia(message.mediaType, message.url);
     }
-    if (message.type === "dokiworld-app-chat-media-error") {
+    if (message.type === "chat.mediaError") {
       elements.chatStatus.textContent = typeof message.error === "string" ? message.error : copy.tryAgain;
       elements.generateImage.disabled = false;
       elements.generateVideo.disabled = false;
     }
-    if (message.type === "dokiworld-app-chat-suggestions") {
+    if (message.type === "chat.suggestions") {
       elements.chatStatus.textContent = "";
       elements.suggestionPanel.replaceChildren();
       const suggestions = Array.isArray(message.suggestions) ? message.suggestions.filter((item) => typeof item === "string" && item.trim()).slice(0, 3) : [];
@@ -1762,9 +1856,9 @@ dokiworld.connect({
       });
       elements.suggestionPanel.classList.toggle("is-hidden", suggestions.length === 0);
     }
-    if (message.type === "dokiworld-app-episode-game" && pendingAction) void openConfiguredApp(message.gameConfig);
-    if (message.type === "dokiworld-app-episode-fixed-game-result" && isRecord2(message.result)) completeHostedConfiguredApp(message.result);
-    if (message.type === "dokiworld-app-episode-game-resolved" && isRecord2(message.result) && Array.isArray(message.utterances)) completeHostedConfiguredApp(message.result, message.utterances);
-    if (message.type === "dokiworld-app-episode-error") showError();
+    if (message.type === "episode.game" && pendingAction) void openConfiguredApp(message.gameConfig);
+    if (message.type === "episode.fixedGameResult") completeHostedConfiguredApp(message.result);
+    if (message.type === "episode.gameResolved") completeHostedConfiguredApp(message.result, message.utterances);
+    if (message.type === "episode.error") showError();
   }
 });
