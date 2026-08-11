@@ -428,9 +428,6 @@ button { color: inherit; }
 /* Match the character-card conversation surface while retaining the episode stage. */
 .story-shell {
   --rail-width: clamp(280px, 27vw, 424px);
-  /* Right-side clearance for the host's fixed "Exit World" overlay button
-     (≈134×42 on desktop, 42×42 icon on ≤640px) so the top bar is not covered. */
-  --host-exit-safe: clamp(144px, 11vw, 164px);
   --panel-border: rgba(255, 255, 255, .16);
   --panel-surface: rgba(34, 23, 31, .72);
   --assistant-surface: #705966;
@@ -552,7 +549,7 @@ button { color: inherit; }
 .topbar {
   grid-template-columns: minmax(0, 1fr) auto;
   height: 74px;
-  margin-right: var(--host-exit-safe, 0px);
+  margin-right: 0;
   padding: 9px 14px 9px 16px;
   border: 1px solid var(--panel-border);
   border-bottom-color: rgba(255, 255, 255, .1);
@@ -653,7 +650,7 @@ button { color: inherit; }
   width: min(100%, clamp(680px, 76cqw, 1080px));
   align-items: baseline;
   gap: 8px;
-  margin: 0 auto clamp(24px, 2vw, 32px);
+  margin: 0 0 clamp(24px, 2vw, 32px);
   border: 1px solid rgba(255,255,255,.14);
   border-radius: 12px;
   padding: 14px 20px;
@@ -711,7 +708,7 @@ button { color: inherit; }
   text-transform: none;
 }
 
-.message-heading { display: flex; min-height: 28px; align-items: center; gap: 7px; margin-bottom: 6px; }
+.message-heading { display: flex; min-height: 28px; align-items: center; gap: 7px; margin-bottom: 8px; }
 .message-heading .speaker { margin: 0; }
 .message-play { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; padding: 0 0 0 2px; color: rgba(255,255,255,.8); background: rgba(255,255,255,.05); font-size: 11px; cursor: pointer; }
 .message-play:hover { border-color: rgba(233,195,110,.44); color: var(--speaker); }
@@ -866,11 +863,18 @@ button { color: inherit; }
 .dock-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; margin-left: auto; }
 .chat-tools .persona-trigger { display: inline-flex; width: auto; min-width: max-content; height: auto; min-height: 32px; flex: 0 0 auto; align-items: center; gap: 6px; border: 1px solid rgba(233,195,110,.24); border-radius: 999px; padding: 4px 10px; color: #f2cc8a; background: rgba(242,189,102,.08); line-height: 1; white-space: nowrap; cursor: pointer; }
 .media-tool { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; color: rgba(255,248,251,.78); background: rgba(255,255,255,.045); cursor: pointer; }
+.media-tool-icon { display: block; width: 18px; height: 18px; }
 .media-tool:disabled { opacity: .4; cursor: wait; }
 
 .jump-latest { position: sticky; z-index: 7; right: 12px; bottom: 4px; float: right; display: inline-flex; min-height: 34px; align-items: center; gap: 7px; border: 1px solid rgba(233,195,110,.28); border-radius: 999px; padding: 7px 12px; color: #f2cc8a; background: rgba(28,18,25,.9); box-shadow: 0 10px 24px rgba(0,0,0,.3); cursor: pointer; }
 
 .generated-media-bubble { width: fit-content; max-width: min(100%, 680px); padding: 0; overflow: hidden; }
+.generated-media-bubble .message-heading,
+.completed-image-bubble .message-heading,
+.completed-video-bubble .message-heading {
+  margin: 0;
+  padding: 11px 13px 9px;
+}
 .generated-chat-media { display: block; width: min(100%, 680px); max-height: 540px; border: 0; object-fit: contain; background: #08090d; }
 
 .completed-image-bubble {
@@ -1039,11 +1043,6 @@ button { color: inherit; }
   .ai-disclosure { font-size: 10px; }
   .opening-tagline { display: grid; }
   .app-dialog { width: 100vw; height: 100vh; margin: 0; }
-}
-
-/* Host "Exit World" becomes a 42×42 icon on narrow screens; shrink the top-bar notch. */
-@media (max-width: 640px) {
-  .story-shell { --host-exit-safe: 56px; }
 }
 
 @media (min-width: 761px) {

@@ -1152,12 +1152,14 @@ async function playEpisodeVideo(item) {
   setWritingChoiceState(false);
   skipVideo.disabled = false;
   videoChoiceOverlay.classList.add("is-hidden");
-  videoBackdrop.style.backgroundImage = "";
+  const poster = sceneNumber > 0 ? `./ui/scene-${sceneNumber}.jpg` : "";
+  videoBackdrop.style.backgroundImage = poster ? `url("${poster}")` : "";
   progressFill.style.width = "0";
   storyOverlay.replaceChildren();
-  const activated = await activateStoryVideo(src, { currentTime: 0 });
+  const activated = await activateStoryVideo(src, { currentTime: 0, poster });
   if (!activated) {
-    postWorldError("world_video_playback_failed");
+    storyVideo.pause();
+    syncVideoControl();
     return;
   }
   storyVideo.muted = false;
@@ -1362,13 +1364,14 @@ async function playScene(number) {
     ? copy.secondActChapterLabel
     : copy.chapterLabel;
   setPhase("video");
-  const poster = `/assets/worlds/banquet-contract-scene-${number}.jpg`;
+  const poster = `./ui/scene-${number}.jpg`;
   videoBackdrop.style.backgroundImage = `url("${poster}")`;
   progressFill.style.width = "0";
   storyOverlay.innerHTML = videoOverlayAt(0);
   const activated = await activateStoryVideo(src, { poster });
   if (!activated) {
-    postWorldError("world_video_playback_failed");
+    storyVideo.pause();
+    syncVideoControl();
     return;
   }
   if (number === SECOND_ACT_VIDEO_ONE_SCENE && media?.secondActVideo2) {
@@ -1483,13 +1486,7 @@ function connectGameHost() {
       acceptedGameResult = true;
       const result = output.data;
       if (episodeMode && !secondActActive) {
-        const isFixedGameResult = activeGameConfig?.configId === "lily-cover-story";
-        if (isFixedGameResult) {
-          gameLoading.classList.add("is-hidden");
-          showResult(result);
-        } else {
-          gameLoading.classList.remove("is-hidden");
-        }
+        showResult(result, { persist: false });
         postEpisodeEvent({
           type: "episode.gameResult",
           result,
@@ -1719,7 +1716,8 @@ storyVideos.forEach((video) => {
   });
   video.addEventListener("error", () => {
     if (phase === "video" && video === storyVideo) {
-      postWorldError("world_video_playback_failed");
+      video.pause();
+      syncVideoControl();
     }
   });
 });

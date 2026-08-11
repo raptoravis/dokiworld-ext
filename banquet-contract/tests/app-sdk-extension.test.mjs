@@ -7,6 +7,11 @@ test("Banquet Contract routes episode traffic through the typed SDK extension", 
   assert.match(source, /createEpisodeClientExtension/);
   assert.doesNotMatch(source, /dokiworld-app-episode/);
   assert.match(source, /message\.type === "episode\.gameResolved"/);
+  assert.match(
+    source,
+    /if \(episodeMode && !secondActActive\) \{\s+showResult\(result, \{ persist: false \}\);\s+postEpisodeEvent\(\{/,
+    "the configured Act One app must leave the nested game before waiting for episode resolution",
+  );
 });
 
 test("video two hands off directly to match-three without the retired text transition", async () => {

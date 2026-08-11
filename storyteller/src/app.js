@@ -1,6 +1,8 @@
 import {
   createAppClient,
   createAppHost,
+  createLegacyGameInitMessage,
+  parseLegacyAppMessage,
 } from "@dokiworld/app-sdk";
 import { createEpisodeClientExtension } from "@dokiworld/app-sdk/episode";
 import { createGameOptions } from "./game-options.js";
@@ -240,9 +242,29 @@ let beatsById = new Map();
 let assetsById = new Map();
 let linkedBeatIds = new Set();
 let localActionBeat = null;
+let hostedResultPending = false;
 let playerPersona = null;
 let activeVideo = null;
 let activeImage = null;
+let videoWatchdog = null;
+
+const VIDEO_LOAD_TIMEOUT_MS = 20_000;
+const VIDEO_PLAYBACK_GRACE_MS = 10_000;
+
+function clearVideoWatchdog() {
+  if (videoWatchdog !== null) {
+    window.clearTimeout(videoWatchdog);
+    videoWatchdog = null;
+  }
+}
+
+function armVideoWatchdog(item, timeoutMs = VIDEO_LOAD_TIMEOUT_MS) {
+  clearVideoWatchdog();
+  videoWatchdog = window.setTimeout(() => {
+    videoWatchdog = null;
+    if (activeVideo === item) renderNext();
+  }, timeoutMs);
+}
 let replayingImage = false;
 
 function isRecord(value) {
@@ -407,6 +429,25 @@ function orderedBeats() {
 
 function nextConfiguredBeat(beat) {
   if (typeof beat?.nextBeatId === "string") return beatsById.get(beat.nextBeatId) || null;
+  if (typeof beat?.id === "string") {
+    const inferredTargetIds = new Set();
+    beatsById.forEach((candidate) => {
+      const options = Array.isArray(candidate?.choices?.options)
+        ? candidate.choices.options
+        : [];
+      if (!options.some((option) => option?.nextBeatId === beat.id)) return;
+      options.forEach((option) => {
+        if (option?.nextBeatId === beat.id) return;
+        const sibling = beatsById.get(option?.nextBeatId) || null;
+        if (typeof sibling?.nextBeatId === "string" && beatsById.has(sibling.nextBeatId)) {
+          inferredTargetIds.add(sibling.nextBeatId);
+        }
+      });
+    });
+    if (inferredTargetIds.size === 1) {
+      return beatsById.get([...inferredTargetIds][0]) || null;
+    }
+  }
   if (beat?.choices || linkedBeatIds.size > 0) return null;
   const beats = orderedBeats();
   const index = beats.findIndex((candidate) => candidate.id === beat?.id);
@@ -577,7 +618,8 @@ function renderDialogue(first) {
       speak(text, true);
     });
     heading.append(speaker, play);
-    content.append(heading, bubble);
+    bubble.prepend(heading);
+    content.append(bubble);
     if (
       groupIndex === groups.length - 1
       && !entry.items.some(({ segment }) => segment.localAuthored === true)
@@ -638,10 +680,23 @@ function renderVideo(item) {
   elements.caption.textContent = typeof item.segment.caption === "string" ? item.segment.caption : "";
   elements.mediaView.classList.remove("is-hidden");
   showControls();
+  armVideoWatchdog(item);
+  elements.video.addEventListener("loadedmetadata", () => {
+    if (activeVideo !== item || !Number.isFinite(elements.video.duration)) return;
+    armVideoWatchdog(
+      item,
+      Math.max(
+        VIDEO_LOAD_TIMEOUT_MS,
+        elements.video.duration * 1_000 + VIDEO_PLAYBACK_GRACE_MS,
+      ),
+    );
+  }, { once: true });
   void elements.video.play().catch(() => {
     elements.video.muted = true;
     return elements.video.play();
-  }).catch(() => undefined);
+  }).catch(() => {
+    if (activeVideo === item) renderNext();
+  });
 }
 
 function appendCompletedVideo(item) {
@@ -693,7 +748,8 @@ function appendCompletedVideo(item) {
     label.textContent = caption;
     bubble.append(label);
   }
-  content.append(heading, bubble);
+  bubble.prepend(heading);
+  content.append(bubble);
   group.append(content);
   elements.lines.append(group);
 }
@@ -749,7 +805,8 @@ function appendGeneratedMedia(type, url) {
     media.playsInline = true;
   } else media.alt = "";
   bubble.append(media);
-  content.append(heading, bubble);
+  bubble.prepend(heading);
+  content.append(bubble);
   group.append(content);
   elements.lines.append(group);
   elements.dialogueView.scrollTo({ top: elements.dialogueView.scrollHeight, behavior: "smooth" });
@@ -778,7 +835,15 @@ function renderChoices(item) {
     button.append(marker, label);
     button.addEventListener("click", () => {
       const targetBeatId = typeof option.nextBeatId === "string" ? option.nextBeatId : "";
-      if (item.segment.localAuthored === true && targetBeatId && !pathNeedsLlm(targetBeatId)) {
+      const deterministicItems = targetBeatId ? localPathItems(targetBeatId) : [];
+      const hasDeterministicProgress = deterministicItems.some(({ segment }) => (
+        ["image", "video", "game", "choices"].includes(segment.type)
+      ));
+      if (
+        item.segment.localAuthored === true
+        && targetBeatId
+        && (!pathNeedsLlm(targetBeatId) || hasDeterministicProgress)
+      ) {
         playConfiguredPath(targetBeatId);
         return;
       }
@@ -804,7 +869,7 @@ async function findConfiguredApp(gameId) {
     isRecord(entry)
     && entry.id === gameId
     && entry.status !== "disabled"
-    && entry.protocolVersion === 2
+    && (entry.protocolVersion === 1 || entry.protocolVersion === 2)
   ));
   if (!app || !safeUrl(app.entryUrl)) throw new Error("app unavailable");
   return app;
@@ -833,6 +898,7 @@ async function openConfiguredApp(config) {
     return;
   }
   try {
+    hostedResultPending = false;
     elements.shell.dataset.phase = "app";
     const app = await findConfiguredApp(gameId);
     const runId = `${dokiworld.runId}:${Date.now().toString(36)}`;
@@ -973,9 +1039,66 @@ function preserveCompletedImage(item) {
     label.textContent = caption;
     bubble.append(label);
   }
-  content.append(heading, bubble);
+  bubble.prepend(heading);
+  content.append(bubble);
   group.append(content);
   elements.lines.append(group);
+}
+
+function settleActiveGameResult(current, result) {
+  if (localActionBeat) {
+    window.queueMicrotask(() => completeLocalConfiguredApp(result));
+    return;
+  }
+  const config = current.config;
+  hostedResultPending = true;
+  post({
+    type: "episode.gameResult",
+    configId: current.config.configId,
+    result,
+  });
+  closeConfiguredApp(false);
+  renderGameResult(result, null, config);
+}
+
+function initializeLegacyActiveGame(current, target, context, grantedScopes) {
+  const sendInit = () => target.postMessage(createLegacyGameInitMessage({
+    gameId: current.app.id,
+    runId: current.runId,
+    locale,
+    grantedScopes,
+    context,
+  }), "*");
+  const handleMessage = (event) => {
+    if (event.source !== target) return;
+    const message = parseLegacyAppMessage(event.data, {
+      kind: "game",
+      appId: current.app.id,
+      runId: current.runId,
+    });
+    if (!message) return;
+    if (message.type === "dokiworld-game-ready") {
+      sendInit();
+      return;
+    }
+    if (message.type === "dokiworld-game-initialized") {
+      elements.appLoading.classList.add("is-hidden");
+      return;
+    }
+    if (message.type === "dokiworld-game-close") {
+      if (localActionBeat) completeLocalConfiguredApp();
+      else closeConfiguredApp(true);
+      return;
+    }
+    if (message.type === "dokiworld-game-result" && isRecord(message.result)) {
+      settleActiveGameResult(current, message.result);
+    }
+  };
+  window.addEventListener("message", handleMessage);
+  current.host = {
+    dispose: () => window.removeEventListener("message", handleMessage),
+  };
+  sendInit();
 }
 
 function initializeActiveGame() {
@@ -984,6 +1107,10 @@ function initializeActiveGame() {
   const target = elements.appFrame.contentWindow;
   if (!target) return;
   const current = activeApp;
+  if (current.app.protocolVersion === 1) {
+    initializeLegacyActiveGame(current, target, context, grantedScopes);
+    return;
+  }
   const runtime = isRecord(current.app.runtime) ? current.app.runtime : {};
   current.host = createAppHost({
     appId: current.app.id,
@@ -1015,17 +1142,7 @@ function initializeActiveGame() {
     },
     onComplete: async (output) => {
       if (!isRecord(output.data)) return { status: "rejected", reason: "invalid_result" };
-      if (localActionBeat) {
-        const result = output.data;
-        window.queueMicrotask(() => completeLocalConfiguredApp(result));
-      } else {
-        post({
-          type: "episode.gameResult",
-          configId: current.config.configId,
-          result: output.data,
-        });
-        elements.appLoading.classList.remove("is-hidden");
-      }
+      settleActiveGameResult(current, output.data);
       return { status: "accepted" };
     },
   });
@@ -1055,6 +1172,12 @@ function completeLocalConfiguredApp(result = null) {
 }
 
 function completeHostedConfiguredApp(result, utterances = null) {
+  if (hostedResultPending) {
+    hostedResultPending = false;
+    if (Array.isArray(utterances)) acceptEpisode(utterances);
+    else showDialogueHistory();
+    return;
+  }
   const config = activeApp?.config || pendingAction?.gameConfig || {};
   const continueWithNarrative = Array.isArray(utterances)
     ? () => acceptEpisode(utterances)
@@ -1096,6 +1219,7 @@ function showEnd() {
 }
 
 function renderNext() {
+  clearVideoWatchdog();
   waitingForHost = false;
   if (activeImage) {
     preserveCompletedImage(activeImage);
@@ -1126,6 +1250,7 @@ function acceptEpisode(utterances) {
   activeApp = null;
   pendingAction = null;
   localActionBeat = null;
+  hostedResultPending = false;
   activeVideo = null;
   activeImage = null;
   replayingImage = false;
@@ -1143,6 +1268,7 @@ function restartEpisode() {
   presentedSegments = 0;
   pendingAction = null;
   localActionBeat = null;
+  hostedResultPending = false;
   activeVideo = null;
   activeImage = null;
   replayingImage = false;
@@ -1224,6 +1350,9 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && replayingImage) closeReplayedImage();
 });
 elements.video.addEventListener("ended", renderNext);
+elements.video.addEventListener("error", () => {
+  if (activeVideo) renderNext();
+});
 elements.restart.addEventListener("click", restartEpisode);
 elements.errorRetry.addEventListener("click", restartEpisode);
 elements.continueForm.addEventListener("submit", (event) => {

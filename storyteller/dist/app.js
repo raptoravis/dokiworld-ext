@@ -1,6 +1,7 @@
-// ../../dokiworld.git/packages/app-sdk/src/index.js
+// ../../dokiworld/packages/app-sdk/src/index.js
 var APP_PROTOCOL = "dokiworld.app";
 var APP_PROTOCOL_VERSION = 2;
+var LEGACY_PROTOCOL_VERSION = 1;
 var MAX_ID_LENGTH = 200;
 var MAX_RESULT_BYTES = 64 * 1024;
 var MAX_RESULT_DEPTH = 12;
@@ -90,6 +91,23 @@ function isBoundedJson(value) {
     return Object.entries(current).every(([key, item]) => key.length <= MAX_ID_LENGTH && visit(item, depth + 1));
   };
   return visit(value, 0);
+}
+function legacyNames(kind) {
+  const prefix = kind === "game" ? "dokiworld-game" : "dokiworld-world";
+  return { prefix, idKey: kind === "game" ? "gameId" : "worldId" };
+}
+function createLegacyGameInitMessage({ gameId, runId, ...payload }) {
+  if (!isBoundedId(gameId) || !isBoundedId(runId)) throw new Error("Invalid legacy game init identity");
+  return { ...payload, type: "dokiworld-game-init", protocolVersion: LEGACY_PROTOCOL_VERSION, gameId, runId };
+}
+function parseLegacyAppMessage(value, { kind, appId, runId }) {
+  if (!isRecord(value)) return null;
+  if (kind !== "game" && kind !== "world") return null;
+  const { prefix, idKey } = legacyNames(kind);
+  if (typeof value.type !== "string" || !value.type.startsWith(`${prefix}-`)) return null;
+  if (value.protocolVersion !== LEGACY_PROTOCOL_VERSION || value[idKey] !== appId) return null;
+  if (value.type !== `${prefix}-ready` && value.runId !== runId) return null;
+  return value;
 }
 function parseExternalAppReadyMessage(value, expectedAppId) {
   if (!isRecord(value) || "runId" in value || "messageId" in value) return null;
@@ -487,7 +505,7 @@ function createAppHost({
   });
 }
 
-// ../../dokiworld.git/packages/app-sdk/src/episode.js
+// ../../dokiworld/packages/app-sdk/src/episode.js
 var CLIENT_WIRE_TYPES = Object.freeze({
   "episode.start": "dokiworld-app-episode-start",
   "episode.restart": "dokiworld-app-episode-restart",
@@ -823,9 +841,26 @@ var beatsById = /* @__PURE__ */ new Map();
 var assetsById = /* @__PURE__ */ new Map();
 var linkedBeatIds = /* @__PURE__ */ new Set();
 var localActionBeat = null;
+var hostedResultPending = false;
 var playerPersona = null;
 var activeVideo = null;
 var activeImage = null;
+var videoWatchdog = null;
+var VIDEO_LOAD_TIMEOUT_MS = 2e4;
+var VIDEO_PLAYBACK_GRACE_MS = 1e4;
+function clearVideoWatchdog() {
+  if (videoWatchdog !== null) {
+    window.clearTimeout(videoWatchdog);
+    videoWatchdog = null;
+  }
+}
+function armVideoWatchdog(item, timeoutMs = VIDEO_LOAD_TIMEOUT_MS) {
+  clearVideoWatchdog();
+  videoWatchdog = window.setTimeout(() => {
+    videoWatchdog = null;
+    if (activeVideo === item) renderNext();
+  }, timeoutMs);
+}
 var replayingImage = false;
 function isRecord3(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -967,6 +1002,23 @@ function orderedBeats() {
 }
 function nextConfiguredBeat(beat) {
   if (typeof beat?.nextBeatId === "string") return beatsById.get(beat.nextBeatId) || null;
+  if (typeof beat?.id === "string") {
+    const inferredTargetIds = /* @__PURE__ */ new Set();
+    beatsById.forEach((candidate) => {
+      const options = Array.isArray(candidate?.choices?.options) ? candidate.choices.options : [];
+      if (!options.some((option) => option?.nextBeatId === beat.id)) return;
+      options.forEach((option) => {
+        if (option?.nextBeatId === beat.id) return;
+        const sibling = beatsById.get(option?.nextBeatId) || null;
+        if (typeof sibling?.nextBeatId === "string" && beatsById.has(sibling.nextBeatId)) {
+          inferredTargetIds.add(sibling.nextBeatId);
+        }
+      });
+    });
+    if (inferredTargetIds.size === 1) {
+      return beatsById.get([...inferredTargetIds][0]) || null;
+    }
+  }
   if (beat?.choices || linkedBeatIds.size > 0) return null;
   const beats = orderedBeats();
   const index = beats.findIndex((candidate) => candidate.id === beat?.id);
@@ -1121,7 +1173,8 @@ function renderDialogue(first) {
       speak(text, true);
     });
     heading.append(speaker, play);
-    content.append(heading, bubble);
+    bubble.prepend(heading);
+    content.append(bubble);
     if (groupIndex === groups.length - 1 && !entry.items.some(({ segment }) => segment.localAuthored === true)) {
       const actions = document.createElement("div");
       actions.className = "message-actions";
@@ -1177,10 +1230,23 @@ function renderVideo(item) {
   elements.caption.textContent = typeof item.segment.caption === "string" ? item.segment.caption : "";
   elements.mediaView.classList.remove("is-hidden");
   showControls();
+  armVideoWatchdog(item);
+  elements.video.addEventListener("loadedmetadata", () => {
+    if (activeVideo !== item || !Number.isFinite(elements.video.duration)) return;
+    armVideoWatchdog(
+      item,
+      Math.max(
+        VIDEO_LOAD_TIMEOUT_MS,
+        elements.video.duration * 1e3 + VIDEO_PLAYBACK_GRACE_MS
+      )
+    );
+  }, { once: true });
   void elements.video.play().catch(() => {
     elements.video.muted = true;
     return elements.video.play();
-  }).catch(() => void 0);
+  }).catch(() => {
+    if (activeVideo === item) renderNext();
+  });
 }
 function appendCompletedVideo(item) {
   const src = safeUrl(item?.segment?.mediaUrl);
@@ -1231,7 +1297,8 @@ function appendCompletedVideo(item) {
     label.textContent = caption;
     bubble.append(label);
   }
-  content.append(heading, bubble);
+  bubble.prepend(heading);
+  content.append(bubble);
   group.append(content);
   elements.lines.append(group);
 }
@@ -1285,7 +1352,8 @@ function appendGeneratedMedia(type, url) {
     media.playsInline = true;
   } else media.alt = "";
   bubble.append(media);
-  content.append(heading, bubble);
+  bubble.prepend(heading);
+  content.append(bubble);
   group.append(content);
   elements.lines.append(group);
   elements.dialogueView.scrollTo({ top: elements.dialogueView.scrollHeight, behavior: "smooth" });
@@ -1309,7 +1377,9 @@ function renderChoices(item) {
     button.append(marker, label);
     button.addEventListener("click", () => {
       const targetBeatId = typeof option.nextBeatId === "string" ? option.nextBeatId : "";
-      if (item.segment.localAuthored === true && targetBeatId && !pathNeedsLlm(targetBeatId)) {
+      const deterministicItems = targetBeatId ? localPathItems(targetBeatId) : [];
+      const hasDeterministicProgress = deterministicItems.some(({ segment }) => ["image", "video", "game", "choices"].includes(segment.type));
+      if (item.segment.localAuthored === true && targetBeatId && (!pathNeedsLlm(targetBeatId) || hasDeterministicProgress)) {
         playConfiguredPath(targetBeatId);
         return;
       }
@@ -1330,7 +1400,7 @@ function renderChoices(item) {
   window.setTimeout(() => elements.choices.querySelector("button")?.focus(), 80);
 }
 async function findConfiguredApp(gameId) {
-  const app = appCatalog.find((entry) => isRecord3(entry) && entry.id === gameId && entry.status !== "disabled" && entry.protocolVersion === 2);
+  const app = appCatalog.find((entry) => isRecord3(entry) && entry.id === gameId && entry.status !== "disabled" && (entry.protocolVersion === 1 || entry.protocolVersion === 2));
   if (!app || !safeUrl(app.entryUrl)) throw new Error("app unavailable");
   return app;
 }
@@ -1354,6 +1424,7 @@ async function openConfiguredApp(config) {
     return;
   }
   try {
+    hostedResultPending = false;
     elements.shell.dataset.phase = "app";
     const app = await findConfiguredApp(gameId);
     const runId = `${dokiworld.runId}:${Date.now().toString(36)}`;
@@ -1484,9 +1555,64 @@ function preserveCompletedImage(item) {
     label.textContent = caption;
     bubble.append(label);
   }
-  content.append(heading, bubble);
+  bubble.prepend(heading);
+  content.append(bubble);
   group.append(content);
   elements.lines.append(group);
+}
+function settleActiveGameResult(current, result) {
+  if (localActionBeat) {
+    window.queueMicrotask(() => completeLocalConfiguredApp(result));
+    return;
+  }
+  const config = current.config;
+  hostedResultPending = true;
+  post({
+    type: "episode.gameResult",
+    configId: current.config.configId,
+    result
+  });
+  closeConfiguredApp(false);
+  renderGameResult(result, null, config);
+}
+function initializeLegacyActiveGame(current, target, context, grantedScopes) {
+  const sendInit = () => target.postMessage(createLegacyGameInitMessage({
+    gameId: current.app.id,
+    runId: current.runId,
+    locale,
+    grantedScopes,
+    context
+  }), "*");
+  const handleMessage = (event) => {
+    if (event.source !== target) return;
+    const message = parseLegacyAppMessage(event.data, {
+      kind: "game",
+      appId: current.app.id,
+      runId: current.runId
+    });
+    if (!message) return;
+    if (message.type === "dokiworld-game-ready") {
+      sendInit();
+      return;
+    }
+    if (message.type === "dokiworld-game-initialized") {
+      elements.appLoading.classList.add("is-hidden");
+      return;
+    }
+    if (message.type === "dokiworld-game-close") {
+      if (localActionBeat) completeLocalConfiguredApp();
+      else closeConfiguredApp(true);
+      return;
+    }
+    if (message.type === "dokiworld-game-result" && isRecord3(message.result)) {
+      settleActiveGameResult(current, message.result);
+    }
+  };
+  window.addEventListener("message", handleMessage);
+  current.host = {
+    dispose: () => window.removeEventListener("message", handleMessage)
+  };
+  sendInit();
 }
 function initializeActiveGame() {
   if (!activeApp || activeApp.host) return;
@@ -1494,6 +1620,10 @@ function initializeActiveGame() {
   const target = elements.appFrame.contentWindow;
   if (!target) return;
   const current = activeApp;
+  if (current.app.protocolVersion === 1) {
+    initializeLegacyActiveGame(current, target, context, grantedScopes);
+    return;
+  }
   const runtime = isRecord3(current.app.runtime) ? current.app.runtime : {};
   current.host = createAppHost({
     appId: current.app.id,
@@ -1521,17 +1651,7 @@ function initializeActiveGame() {
     },
     onComplete: async (output) => {
       if (!isRecord3(output.data)) return { status: "rejected", reason: "invalid_result" };
-      if (localActionBeat) {
-        const result = output.data;
-        window.queueMicrotask(() => completeLocalConfiguredApp(result));
-      } else {
-        post({
-          type: "episode.gameResult",
-          configId: current.config.configId,
-          result: output.data
-        });
-        elements.appLoading.classList.remove("is-hidden");
-      }
+      settleActiveGameResult(current, output.data);
       return { status: "accepted" };
     }
   });
@@ -1558,6 +1678,12 @@ function completeLocalConfiguredApp(result = null) {
   else showEnd();
 }
 function completeHostedConfiguredApp(result, utterances = null) {
+  if (hostedResultPending) {
+    hostedResultPending = false;
+    if (Array.isArray(utterances)) acceptEpisode(utterances);
+    else showDialogueHistory();
+    return;
+  }
   const config = activeApp?.config || pendingAction?.gameConfig || {};
   const continueWithNarrative = Array.isArray(utterances) ? () => acceptEpisode(utterances) : null;
   closeConfiguredApp(false);
@@ -1591,6 +1717,7 @@ function showEnd() {
   window.setTimeout(() => elements.continueReply.focus(), 80);
 }
 function renderNext() {
+  clearVideoWatchdog();
   waitingForHost = false;
   if (activeImage) {
     preserveCompletedImage(activeImage);
@@ -1620,6 +1747,7 @@ function acceptEpisode(utterances) {
   activeApp = null;
   pendingAction = null;
   localActionBeat = null;
+  hostedResultPending = false;
   activeVideo = null;
   activeImage = null;
   replayingImage = false;
@@ -1636,6 +1764,7 @@ function restartEpisode() {
   presentedSegments = 0;
   pendingAction = null;
   localActionBeat = null;
+  hostedResultPending = false;
   activeVideo = null;
   activeImage = null;
   replayingImage = false;
@@ -1709,6 +1838,9 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && replayingImage) closeReplayedImage();
 });
 elements.video.addEventListener("ended", renderNext);
+elements.video.addEventListener("error", () => {
+  if (activeVideo) renderNext();
+});
 elements.restart.addEventListener("click", restartEpisode);
 elements.errorRetry.addEventListener("click", restartEpisode);
 elements.continueForm.addEventListener("submit", (event) => {

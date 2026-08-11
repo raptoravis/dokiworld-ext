@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "id": "banquet-contract",
   "kind": "world",
   "status": "active",
@@ -10,9 +10,21 @@
   "runtime": {
     "protocol": "dokiworld.app",
     "protocolVersion": 2,
-    "input": { "contract": "doki.world.banquet-contract-input", "version": 1 },
-    "outputs": [{ "contract": "doki.world.session-result", "version": 1 }],
-    "extensions": ["world", "episode", "checkpoint"]
+    "input": {
+      "contract": "doki.world.banquet-contract-input",
+      "version": 1
+    },
+    "outputs": [
+      {
+        "contract": "doki.world.session-result",
+        "version": 1
+      }
+    ],
+    "extensions": [
+      "world",
+      "episode",
+      "checkpoint"
+    ]
   },
   "launchRequirements": {
     "minPlayers": 1
