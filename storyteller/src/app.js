@@ -2,6 +2,7 @@ import {
   createAppClient,
   createAppHost,
 } from "@dokiworld/app-sdk";
+import { createGameOptions } from "./game-options.js";
 
 const WORLD_ID = "storyteller";
 
@@ -228,6 +229,7 @@ let presentedSegments = 0;
 let waitingForHost = true;
 let pendingAction = null;
 let activeApp = null;
+let appCatalog = [];
 let ttsEnabled = false;
 let textScaleIndex = 1;
 let lightSkin = false;
@@ -795,11 +797,7 @@ function renderChoices(item) {
 }
 
 async function findConfiguredApp(gameId) {
-  const response = await fetch("/games/catalog.json", { credentials: "same-origin" });
-  if (!response.ok) throw new Error("catalog unavailable");
-  const catalog = await response.json();
-  if (!Array.isArray(catalog.games)) throw new Error("invalid catalog");
-  const app = catalog.games.find((entry) => (
+  const app = appCatalog.find((entry) => (
     isRecord(entry)
     && entry.id === gameId
     && entry.status !== "disabled"
@@ -988,7 +986,7 @@ function initializeActiveGame() {
     appId: current.app.id,
     runId: activeApp.runId,
     target,
-    targetOrigin: new URL(current.app.entryUrl, window.location.origin).origin,
+    targetOrigin: "*",
     extensions: Array.isArray(runtime.extensions)
       ? runtime.extensions
       : ["resize", "progress", "checkpoint"],
@@ -999,17 +997,7 @@ function initializeActiveGame() {
       input: {
         contract: runtime.input?.contract || "doki.game.match3-input",
         version: runtime.input?.version || 1,
-        data: {
-          options: {
-            configId: current.config.configId,
-            rows: current.config.rows,
-            columns: current.config.columns ?? current.config.cols,
-            moves: current.config.moves,
-            timeLimit: current.config.timeLimit,
-            targetScore: current.config.targetScore ?? current.config.target,
-            seed: current.config.seed,
-          },
-        },
+        data: { options: createGameOptions(current.config) },
       },
     },
     outputs: Array.isArray(runtime.outputs) && runtime.outputs.length > 0
@@ -1171,6 +1159,7 @@ function restartEpisode() {
 function initialize(message) {
   locale = String(message.locale).toLowerCase().startsWith("zh") ? "zh-cn" : "en";
   copy = COPY[locale];
+  appCatalog = Array.isArray(message.apps) ? message.apps.filter(isRecord) : [];
   const candidate = isRecord(message.experience) ? message.experience : {};
   experience = {
     characterId: typeof candidate.characterId === "string" ? candidate.characterId : "",

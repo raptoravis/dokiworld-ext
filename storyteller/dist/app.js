@@ -487,6 +487,19 @@ function createAppHost({
   });
 }
 
+// src/game-options.js
+function createGameOptions(config) {
+  return Object.fromEntries(Object.entries({
+    configId: config.configId,
+    rows: config.rows,
+    columns: config.columns ?? config.cols,
+    moves: config.moves,
+    timeLimit: config.timeLimit,
+    targetScore: config.targetScore ?? config.target,
+    seed: config.seed
+  }).filter(([, value]) => value !== void 0 && value !== null));
+}
+
 // src/app.js
 var WORLD_ID = "storyteller";
 var COPY = {
@@ -710,6 +723,7 @@ var presentedSegments = 0;
 var waitingForHost = true;
 var pendingAction = null;
 var activeApp = null;
+var appCatalog = [];
 var ttsEnabled = false;
 var textScaleIndex = 1;
 var lightSkin = false;
@@ -1224,11 +1238,7 @@ function renderChoices(item) {
   window.setTimeout(() => elements.choices.querySelector("button")?.focus(), 80);
 }
 async function findConfiguredApp(gameId) {
-  const response = await fetch("/games/catalog.json", { credentials: "same-origin" });
-  if (!response.ok) throw new Error("catalog unavailable");
-  const catalog = await response.json();
-  if (!Array.isArray(catalog.games)) throw new Error("invalid catalog");
-  const app = catalog.games.find((entry) => isRecord2(entry) && entry.id === gameId && entry.status !== "disabled" && entry.protocolVersion === 2);
+  const app = appCatalog.find((entry) => isRecord2(entry) && entry.id === gameId && entry.status !== "disabled" && entry.protocolVersion === 2);
   if (!app || !safeUrl(app.entryUrl)) throw new Error("app unavailable");
   return app;
 }
@@ -1397,7 +1407,7 @@ function initializeActiveGame() {
     appId: current.app.id,
     runId: activeApp.runId,
     target,
-    targetOrigin: new URL(current.app.entryUrl, window.location.origin).origin,
+    targetOrigin: "*",
     extensions: Array.isArray(runtime.extensions) ? runtime.extensions : ["resize", "progress", "checkpoint"],
     init: {
       locale,
@@ -1406,17 +1416,7 @@ function initializeActiveGame() {
       input: {
         contract: runtime.input?.contract || "doki.game.match3-input",
         version: runtime.input?.version || 1,
-        data: {
-          options: {
-            configId: current.config.configId,
-            rows: current.config.rows,
-            columns: current.config.columns ?? current.config.cols,
-            moves: current.config.moves,
-            timeLimit: current.config.timeLimit,
-            targetScore: current.config.targetScore ?? current.config.target,
-            seed: current.config.seed
-          }
-        }
+        data: { options: createGameOptions(current.config) }
       }
     },
     outputs: Array.isArray(runtime.outputs) && runtime.outputs.length > 0 ? runtime.outputs : [{ contract: "doki.game.result", version: 1 }]
@@ -1562,6 +1562,7 @@ function restartEpisode() {
 function initialize(message) {
   locale = String(message.locale).toLowerCase().startsWith("zh") ? "zh-cn" : "en";
   copy = COPY[locale];
+  appCatalog = Array.isArray(message.apps) ? message.apps.filter(isRecord2) : [];
   const candidate = isRecord2(message.experience) ? message.experience : {};
   experience = {
     characterId: typeof candidate.characterId === "string" ? candidate.characterId : "",
