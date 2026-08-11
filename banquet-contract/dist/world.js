@@ -1442,12 +1442,14 @@ async function playEpisodeVideo(item) {
   setWritingChoiceState(false);
   skipVideo.disabled = false;
   videoChoiceOverlay.classList.add("is-hidden");
-  videoBackdrop.style.backgroundImage = "";
+  const poster = sceneNumber > 0 ? `./ui/scene-${sceneNumber}.jpg` : "";
+  videoBackdrop.style.backgroundImage = poster ? `url("${poster}")` : "";
   progressFill.style.width = "0";
   storyOverlay.replaceChildren();
-  const activated = await activateStoryVideo(src, { currentTime: 0 });
+  const activated = await activateStoryVideo(src, { currentTime: 0, poster });
   if (!activated) {
-    postWorldError("world_video_playback_failed");
+    storyVideo.pause();
+    syncVideoControl();
     return;
   }
   storyVideo.muted = false;
@@ -1570,13 +1572,14 @@ async function playScene(number) {
   }
   sceneNumber = number;
   setPhase("video");
-  const poster = `/assets/worlds/banquet-contract-scene-${number}.jpg`;
+  const poster = `./ui/scene-${number}.jpg`;
   videoBackdrop.style.backgroundImage = `url("${poster}")`;
   progressFill.style.width = "0";
   storyOverlay.innerHTML = videoOverlayAt(0);
   const activated = await activateStoryVideo(src, { poster });
   if (!activated) {
-    postWorldError("world_video_playback_failed");
+    storyVideo.pause();
+    syncVideoControl();
     return;
   }
   storyVideo.muted = false;
@@ -1763,7 +1766,10 @@ storyVideos.forEach((video) => {
     if (video === storyVideo) finishScene();
   });
   video.addEventListener("error", () => {
-    if (video === storyVideo) postWorldError("world_video_playback_failed");
+    if (video === storyVideo) {
+      video.pause();
+      syncVideoControl();
+    }
   });
 });
 document.querySelector("#restart-story").addEventListener("click", () => {
