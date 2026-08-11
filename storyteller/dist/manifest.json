@@ -3,8 +3,27 @@
   "id": "storyteller",
   "status": "active",
   "entry": "index.html",
-  "protocolVersion": 1,
-  "runtime": "frontend-static",
+  "protocolVersion": 2,
+  "runtime": {
+    "protocol": "dokiworld.app",
+    "protocolVersion": 2,
+    "input": {
+      "contract": "doki.world.storyteller-input",
+      "version": 1
+    },
+    "outputs": [
+      {
+        "contract": "doki.world.session-result",
+        "version": 1
+      }
+    ],
+    "extensions": [
+      "world",
+      "episode",
+      "chat",
+      "checkpoint"
+    ]
+  },
   "episodeRenderer": true,
   "launchRequirements": {
     "minPlayers": 1

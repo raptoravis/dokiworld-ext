@@ -24,7 +24,18 @@
     }
   },
   "runtime": {
-    "protocol": "dokiworld.game",
-    "protocolVersion": 1
+    "protocol": "dokiworld.app",
+    "protocolVersion": 2,
+    "input": {
+      "contract": "doki.game.match3-input",
+      "version": 1
+    },
+    "outputs": [
+      {
+        "contract": "doki.game.result",
+        "version": 1
+      }
+    ],
+    "extensions": ["resize", "progress", "checkpoint"]
   }
 }

@@ -4,6 +4,7 @@ import {
   createMatch3State,
   createSeededRandom,
 } from "./engine.js";
+import { createAppClient } from "@dokiworld/app-sdk";
 
 const GAME_ID = "game-match3";
 const MAX_SCORE = 100;
@@ -95,7 +96,10 @@ const elements = {
   restart: document.querySelector("#restart"),
 };
 
-let host = null;
+const dokiworld = createAppClient({
+  appId: GAME_ID,
+  extensions: ["resize", "progress", "checkpoint"],
+});
 let locale = "en";
 let copy = COPY.en;
 let config = { ...DEFAULTS };
@@ -136,10 +140,6 @@ function configure(options = {}) {
 
 function sleep(milliseconds) { return new Promise((resolve) => window.setTimeout(resolve, milliseconds)); }
 function positionKey(position) { return `${position.row}:${position.column}`; }
-function post(type, extra = {}) {
-  if (!host) return;
-  window.parent.postMessage({ type, protocolVersion: 1, gameId: GAME_ID, runId: host.runId, ...extra }, "*");
-}
 function tileAt(position) {
   return tiles.find((tile) => tile.row === position.row && tile.column === position.column);
 }
@@ -581,7 +581,15 @@ async function finish() {
   elements.celebration.hidden = false;
   scatterCelebration();
   await sleep(1250);
-  post("dokiworld-game-result", { result: { normalizedScore: normalized, outcome: "completed", metrics: { points: displayedPoints, cleared: state.cleared, moves: state.movesUsed, bestCascade: state.bestCascade } } });
+  await dokiworld.complete({
+    contract: "doki.game.result",
+    version: 1,
+    data: {
+      normalizedScore: normalized,
+      outcome: "completed",
+      metrics: { points: displayedPoints, cleared: state.cleared, moves: state.movesUsed, bestCascade: state.bestCascade },
+    },
+  });
 }
 
 function applyStaticCopy() {
@@ -629,29 +637,20 @@ function start() {
     elements.timer.setAttribute("aria-label", copy.time.replace("{value}", Math.ceil(left / 1000)));
     if (left <= 0 && !busy) void finish();
   }, 200);
-  post("dokiworld-game-initialized");
-  post("dokiworld-game-resize", { height: Math.min(760, Math.max(520, elements.game.scrollHeight + 32)) });
+  dokiworld.send("dokiworld-app-resize", { height: Math.min(760, Math.max(520, elements.game.scrollHeight + 32)) });
 }
 
 elements.restart.addEventListener("click", () => {
-  if (!host) return;
+  if (!dokiworld.runId) return;
   window.clearInterval(timer);
   start();
 });
 
-window.addEventListener("message", (event) => {
-  if (event.source !== window.parent || !event.data || typeof event.data !== "object") return;
-  const message = event.data;
-  if (message.type !== "dokiworld-game-init" || message.protocolVersion !== 1 || message.gameId !== GAME_ID || typeof message.runId !== "string") return;
-  host = { runId: message.runId };
-  locale = String(message.locale).toLowerCase().startsWith("zh") ? "zh-cn" : "en";
+dokiworld.connect({
+  onInit: ({ locale: nextLocale, input }) => {
+  locale = String(nextLocale).toLowerCase().startsWith("zh") ? "zh-cn" : "en";
   copy = COPY[locale];
-  configure(message.options);
+  configure(input.data?.options);
   start();
+  },
 });
-
-window.parent.postMessage({
-  type: "dokiworld-game-ready",
-  protocolVersion: 1,
-  gameId: GAME_ID,
-}, "*");

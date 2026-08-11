@@ -1,5 +1,9 @@
+import {
+  createAppClient,
+  createAppHost,
+} from "@dokiworld/app-sdk";
+
 const WORLD_ID = "banquet-contract";
-const WORLD_PROTOCOL_VERSION = 1;
 const CHECKPOINT_CONTRACT = "doki.world.banquet-contract";
 const CHECKPOINT_VERSION = 1;
 const GAME_ID = "game-match3";
@@ -177,7 +181,10 @@ const videoNoteCopy = document.querySelector("#video-note-copy");
 
 let locale = "en";
 let copy = COPY.en;
-let host = null;
+const dokiworld = createAppClient({
+  appId: WORLD_ID,
+  extensions: ["world", "episode", "checkpoint"],
+});
 let phase = "cover";
 let sceneNumber = 0;
 let choice = "A";
@@ -195,6 +202,7 @@ let activeGameConfig = null;
 let preparedGameId = "";
 let preparedGameRunId = "";
 let gameFrameReady = false;
+let activeGameHost = null;
 let writingChoiceItem = null;
 let writingChoiceAwaitingContinuation = false;
 let playWritingVideoAfterChoice = false;
@@ -404,23 +412,17 @@ function readSafeMediaUrl(value) {
 }
 
 function postEpisodeEvent(type, payload = {}) {
-  if (!host || !episodeMode) return;
+  if (!dokiworld.runId || !episodeMode) return;
   postWorldEvent(type, payload);
 }
 
 function postWorldEvent(type, payload = {}) {
-  if (!host) return;
-  window.parent.postMessage({
-    type,
-    protocolVersion: WORLD_PROTOCOL_VERSION,
-    worldId: WORLD_ID,
-    runId: host.runId,
-    ...payload,
-  }, "*");
+  if (!dokiworld.runId) return;
+  dokiworld.send(type, payload);
 }
 
 function publishCheckpoint(checkpoint) {
-  postWorldEvent("dokiworld-world-checkpoint", { checkpoint });
+  postWorldEvent("dokiworld-app-checkpoint", { checkpoint });
 }
 
 function checkpointText(value, maxLength = 4_000) {
@@ -555,7 +557,7 @@ function checkpointEnvelope(screen, current = undefined) {
 
 function clearCheckpoint() {
   world.dataset.checkpointState = "clearing";
-  postWorldEvent("dokiworld-world-checkpoint-clear");
+  postWorldEvent("dokiworld-app-checkpoint-clear");
 }
 
 function restoreCheckpoint(candidate) {
@@ -643,14 +645,8 @@ function restoreCheckpoint(candidate) {
 }
 
 function postWorldError(code) {
-  if (!host) return;
-  window.parent.postMessage({
-    type: "dokiworld-world-error",
-    protocolVersion: WORLD_PROTOCOL_VERSION,
-    worldId: WORLD_ID,
-    runId: host.runId,
-    code,
-  }, "*");
+  if (!dokiworld.runId) return;
+  dokiworld.send("dokiworld-app-world-error", { code });
 }
 
 function initialize(
@@ -662,7 +658,7 @@ function initialize(
   if (initialized) return;
   const resolvedMedia = readMedia(nextMedia);
   const resolvedExperience = readExperience(nextExperience);
-  if (host && !resolvedMedia && !resolvedExperience) {
+  if (dokiworld.runId && !resolvedMedia && !resolvedExperience) {
     postWorldError("world_media_unavailable");
     return;
   }
@@ -684,23 +680,6 @@ function initialize(
   }
   preloadConfiguredStoryVideos();
   if (!restoreCheckpoint(nextCheckpoint)) setPhase("cover");
-  if (host) {
-    window.parent.postMessage({
-      type: "dokiworld-world-initialized",
-      protocolVersion: WORLD_PROTOCOL_VERSION,
-      worldId: WORLD_ID,
-      runId: host.runId,
-    }, "*");
-  }
-}
-
-function postReady() {
-  if (window.parent === window) return;
-  window.parent.postMessage({
-    type: "dokiworld-world-ready",
-    protocolVersion: WORLD_PROTOCOL_VERSION,
-    worldId: WORLD_ID,
-  }, "*");
 }
 
 function overlayMarkup(text) {
@@ -968,7 +947,7 @@ function renderEpisodeChoices(item) {
         void playScene(2);
         return;
       }
-      postEpisodeEvent("dokiworld-world-episode-choice", {
+      postEpisodeEvent("dokiworld-app-episode-choice", {
         beatId: segment.beatId,
         optionId: option.id,
       });
@@ -1023,6 +1002,8 @@ function preloadNextEpisodeGame() {
 }
 
 function resetPreparedGame() {
+  activeGameHost?.dispose();
+  activeGameHost = null;
   preparedGameId = "";
   preparedGameRunId = "";
   gameFrameReady = false;
@@ -1090,7 +1071,7 @@ function renderNextEpisodeSegment() {
     episodeWaiting = true;
     episodeContinue.classList.add("is-hidden");
     episodeRetry.classList.add("is-hidden");
-    postEpisodeEvent("dokiworld-world-episode-action", {
+    postEpisodeEvent("dokiworld-app-episode-action", {
       beatId: item.segment.beatId,
     });
   } else {
@@ -1229,7 +1210,7 @@ function startGame() {
 function startConfiguredGame(config) {
   const gameId = typeof config?.gameId === "string" ? config.gameId.trim() : "";
   if (!/^[a-z0-9][a-z0-9-]{0,127}$/.test(gameId)) {
-    postEpisodeEvent("dokiworld-world-error", { code: "world_game_unavailable" });
+    postEpisodeEvent("dokiworld-app-world-error", { code: "world_game_unavailable" });
     return;
   }
   activeGameId = gameId;
@@ -1246,7 +1227,7 @@ function startConfiguredGame(config) {
   gameLoading.classList.remove("is-hidden");
   setPhase("match");
   if (canReusePreparedFrame) {
-    if (gameFrameReady) initializeGame();
+    connectGameHost();
   } else {
     preparedGameId = gameId;
     preparedGameRunId = gameRunId;
@@ -1256,18 +1237,64 @@ function startConfiguredGame(config) {
   }
 }
 
-function initializeGame() {
-  matchFrame.contentWindow?.postMessage({
-    type: "dokiworld-game-init",
-    protocolVersion: 1,
-    gameId: activeGameId,
+function connectGameHost() {
+  const target = matchFrame.contentWindow;
+  if (!target || !activeGameId || !gameRunId) return;
+  activeGameHost?.dispose();
+  activeGameHost = createAppHost({
+    appId: activeGameId,
     runId: gameRunId,
-    locale,
-    grantedScopes: [],
-    context: { schemaVersion: 1 },
-    options: activeGameConfig || banquetMatch3Config(),
-  }, "*");
+    target,
+    targetOrigin: "*",
+    extensions: ["resize", "progress", "checkpoint"],
+    init: {
+      locale,
+      grantedScopes: [],
+      context: { schemaVersion: 1 },
+      input: {
+        contract: "doki.game.match3-input",
+        version: 1,
+        data: {
+          options: activeGameConfig || banquetMatch3Config(),
+        },
+      },
+    },
+    outputs: [{ contract: "doki.game.result", version: 1 }],
+  });
+  activeGameHost.connect({
+    onInitialized: () => {
+      gameFrameReady = true;
+      gameLoading.classList.add("is-hidden");
+    },
+    onComplete: async (output) => {
+      if (acceptedGameResult || output.contract !== "doki.game.result") {
+        return { status: "rejected", reason: "duplicate_or_invalid_result" };
+      }
+      acceptedGameResult = true;
+      const result = output.data;
+      if (episodeMode) {
+        const isFixedGameResult = activeGameConfig?.configId === "lily-cover-story";
+        if (isFixedGameResult) {
+          gameLoading.classList.add("is-hidden");
+          showResult(result);
+        } else {
+          gameLoading.classList.remove("is-hidden");
+        }
+        postEpisodeEvent("dokiworld-app-episode-game-result", {
+          result,
+          configId: activeGameConfig?.configId,
+        });
+      } else {
+        showResult(result);
+      }
+      return { status: "accepted" };
+    },
+  });
 }
+
+matchFrame.addEventListener("load", () => {
+  if (phase === "match") connectGameHost();
+});
 
 function showResult(result, { persist = true } = {}) {
   const rawPoints = Number(result?.metrics?.points);
@@ -1315,7 +1342,7 @@ function beginStory() {
     return;
   }
   episodeStarted = true;
-  postEpisodeEvent("dokiworld-world-episode-start");
+  postEpisodeEvent("dokiworld-app-episode-start");
   if (episodeQueue.length > 0) renderNextEpisodeSegment();
   else showEpisodeWaiting();
 }
@@ -1335,7 +1362,7 @@ episodeRetry.addEventListener("click", () => {
   if (episodeWaiting) return;
   episodeWaiting = true;
   showEpisodeWaiting();
-  postEpisodeEvent("dokiworld-world-episode-start");
+  postEpisodeEvent("dokiworld-app-episode-start");
 });
 videoToggle.addEventListener("click", async () => {
   if (storyVideo.paused || storyVideo.ended) {
@@ -1397,114 +1424,55 @@ document.querySelector("#restart-story").addEventListener("click", () => {
     videoChoiceOverlay.classList.add("is-hidden");
     videoNoteOverlay.classList.add("is-hidden");
     resetPreparedGame();
-    postEpisodeEvent("dokiworld-world-episode-restart");
+    postEpisodeEvent("dokiworld-app-episode-restart");
   }
   setPhase("cover");
 });
 
-window.addEventListener("message", (event) => {
-  if (event.source === window.parent) {
-    const message = event.data;
-    if (!message || typeof message !== "object") return;
-    if (message.type === "dokiworld-world-init") {
-      if (
-        message.protocolVersion !== WORLD_PROTOCOL_VERSION
-        || message.worldId !== WORLD_ID
-        || typeof message.runId !== "string"
-      ) return;
-      host = { runId: message.runId };
-      initialize(
-        message.locale,
-        message.media,
-        message.experience,
-        message.checkpoint,
-      );
-      return;
-    }
-    if (
-      message.protocolVersion !== WORLD_PROTOCOL_VERSION
-      || message.worldId !== WORLD_ID
-      || message.runId !== host?.runId
-    ) return;
-    if (message.type === "dokiworld-world-checkpoint-cleared") {
-      world.dataset.checkpointState = "cleared";
-    } else if (!episodeMode) {
-      return;
-    } else if (message.type === "dokiworld-world-episode-resuming") {
-      showEpisodeWaiting();
-    } else if (message.type === "dokiworld-world-episode") {
-      acceptEpisodeUtterances(message.utterances);
-    } else if (message.type === "dokiworld-world-episode-game") {
-      startConfiguredGame(message.gameConfig);
-    } else if (message.type === "dokiworld-world-episode-fixed-game-result") {
-      episodeWaiting = false;
-      showResult(message.result);
-    } else if (message.type === "dokiworld-world-episode-error") {
-      episodeWaiting = false;
-      world.dataset.episodeState = "error";
-      setLilyTransition(false);
-      episodeTitle.textContent = experience?.title || copy.episodeEyebrow;
-      episodeContent.replaceChildren();
-      const error = document.createElement("p");
-      error.className = "episode-line narration";
-      error.textContent = message.code === "authentication_required"
-        ? copy.episodeAuthenticationRequired
-        : copy.episodeError;
-      episodeContent.append(error);
-      episodeContinue.classList.add("is-hidden");
-      episodeRetry.classList.remove("is-hidden");
-      setPhase("episode");
-    }
+if (window.parent !== window) {
+  dokiworld.connect({
+    onInit: ({ locale: nextLocale, input }) => {
+      const data = input.data && typeof input.data === "object" ? input.data : {};
+      initialize(nextLocale, data.media, data.experience, data.checkpoint);
+    },
+    onMessage: (envelope) => {
+      const message = { type: envelope.type, ...envelope.payload };
+  if (message.type === "dokiworld-app-checkpoint-cleared") {
+    world.dataset.checkpointState = "cleared";
+  } else if (!episodeMode) {
     return;
+  } else if (message.type === "dokiworld-app-episode-resuming") {
+    showEpisodeWaiting();
+  } else if (message.type === "dokiworld-app-episode") {
+    acceptEpisodeUtterances(message.utterances);
+  } else if (message.type === "dokiworld-app-episode-game") {
+    startConfiguredGame(message.gameConfig);
+  } else if (message.type === "dokiworld-app-episode-fixed-game-result") {
+    episodeWaiting = false;
+    showResult(message.result);
+  } else if (message.type === "dokiworld-app-episode-error") {
+    episodeWaiting = false;
+    world.dataset.episodeState = "error";
+    setLilyTransition(false);
+    episodeTitle.textContent = experience?.title || copy.episodeEyebrow;
+    episodeContent.replaceChildren();
+    const error = document.createElement("p");
+    error.className = "episode-line narration";
+    error.textContent = message.code === "authentication_required"
+      ? copy.episodeAuthenticationRequired
+      : copy.episodeError;
+    episodeContent.append(error);
+    episodeContinue.classList.add("is-hidden");
+    episodeRetry.classList.remove("is-hidden");
+    setPhase("episode");
   }
-
-  if (event.source !== matchFrame.contentWindow || event.origin !== "null") return;
-  if (!event.data || typeof event.data !== "object") return;
-  const message = event.data;
-  if (message.type === "dokiworld-game-ready") {
-    gameFrameReady = true;
-    if (phase === "match") initializeGame();
-    return;
-  }
-  if (
-    message.protocolVersion !== 1
-    || message.gameId !== activeGameId
-    || message.runId !== gameRunId
-  ) return;
-  if (message.type === "dokiworld-game-initialized") {
-    gameLoading.classList.add("is-hidden");
-    return;
-  }
-  if (message.type === "dokiworld-game-result" && !acceptedGameResult) {
-    acceptedGameResult = true;
-    if (episodeMode) {
-      const isFixedGameResult = activeGameConfig?.configId === "lily-cover-story";
-      if (isFixedGameResult) {
-        gameLoading.classList.add("is-hidden");
-        showResult(message.result);
-      } else {
-        gameLoading.classList.remove("is-hidden");
-      }
-      postEpisodeEvent("dokiworld-world-episode-game-result", {
-        result: message.result,
-        configId: activeGameConfig?.configId,
-      });
-    } else {
-      showResult(message.result);
-    }
-  }
-});
+    },
+  });
+}
 
 if (window.parent === window) {
   const requestedLocale = new URLSearchParams(window.location.search).get("locale") || navigator.language;
   initialize(requestedLocale);
 } else {
-  postReady();
-  const readyTimer = window.setInterval(() => {
-    if (initialized) {
-      window.clearInterval(readyTimer);
-    } else {
-      postReady();
-    }
-  }, 500);
+  // createAppClient owns ready/init retries for embedded runs.
 }
