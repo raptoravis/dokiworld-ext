@@ -570,31 +570,6 @@ button {
   white-space: nowrap;
 }
 
-#episode-continue.is-transition-continue {
-  width: min(210px, 72%);
-  min-height: 54px;
-  border: 1px solid rgba(255, 255, 255, 0.78);
-  border-radius: 999px;
-  color: #050505;
-  background: #fff;
-  box-shadow: 0 14px 42px rgba(255, 255, 255, 0.14);
-  font-size: 18px;
-  font-weight: 850;
-  letter-spacing: 0.2em;
-}
-
-#episode-continue.is-transition-continue img {
-  display: none;
-}
-
-#episode-continue.is-transition-continue .episode-action-label {
-  position: static;
-  width: auto;
-  height: auto;
-  overflow: visible;
-  clip-path: none;
-}
-
 .episode-retry {
   min-width: 108px;
   min-height: 50px;
@@ -771,7 +746,7 @@ button {
   text-align: left;
 }
 
-.result-message .lily-avatar {
+.result-message .result-avatar {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
@@ -784,6 +759,11 @@ button {
   font: 600 17px/1 Georgia, "Times New Roman", serif;
 }
 
+.result-message[data-speaker="ryan"] .result-avatar {
+  color: #2b2115;
+  background: linear-gradient(145deg, #f0d7a1, #bd8741);
+}
+
 .result-message p {
   flex: 1;
   margin: 0;
@@ -793,6 +773,143 @@ button {
   background: #f1e9e6;
   font-size: 13px;
   line-height: 1.55;
+}
+
+/* Main interface — 1280 × 718 planner layout. Replace the two SVG art slots only. */
+.home-screen {
+  place-items: center;
+  overflow: hidden;
+  background: #09080a;
+}
+
+.home-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #d7ccc2;
+}
+
+.home-background-art {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.home-background-note {
+  position: absolute;
+  z-index: 2;
+  top: 2.8%;
+  left: 2.6%;
+  max-width: 36%;
+  margin: 0;
+  color: #171317;
+  font-size: clamp(8px, 2.5cqh, 30px);
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.home-character-frame {
+  position: absolute;
+  z-index: 2;
+  top: 12.4%;
+  bottom: -0.6%;
+  left: 33.2%;
+  width: 33.7%;
+  overflow: hidden;
+  border: clamp(2px, 0.35cqh, 5px) solid #141114;
+  border-radius: 7.2% 7.2% 0 0;
+  background: rgba(246, 241, 236, 0.42);
+}
+
+.home-character-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+
+.home-character-label {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  color: #141114;
+  font-size: clamp(10px, 9.2cqh, 68px);
+  font-weight: 500;
+  line-height: 1.05;
+  text-align: center;
+  white-space: pre-line;
+  writing-mode: vertical-rl;
+  transform: translateX(-50%);
+}
+
+.home-controls {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+.home-action {
+  position: absolute;
+  display: grid;
+  width: 12.7%;
+  aspect-ratio: 1.35;
+  place-items: center;
+  padding: 1% 1.5%;
+  border: clamp(2px, 0.35cqh, 5px) solid #151215;
+  border-radius: 22%;
+  color: #161216;
+  background: rgba(248, 245, 242, 0.82);
+  box-shadow: 0 0.8cqh 2cqh rgba(32, 19, 28, 0.12);
+  font-size: clamp(8px, 3.8cqh, 32px);
+  font-weight: 520;
+  line-height: 1.18;
+  text-align: center;
+  white-space: pre-line;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.home-action:hover,
+.home-action:focus-visible {
+  background: rgba(255, 253, 250, 0.96);
+  outline: none;
+  transform: translateY(-2%);
+}
+
+.home-action-immerse,
+.home-action-background,
+.home-action-chat {
+  left: 5.9%;
+}
+
+.home-action-poke,
+.home-action-outfit,
+.home-action-continue {
+  left: 82%;
+}
+
+.home-action-immerse,
+.home-action-poke {
+  top: 32.6%;
+}
+
+.home-action-background,
+.home-action-outfit {
+  top: 55.7%;
+}
+
+.home-action-chat,
+.home-action-continue {
+  top: 77.9%;
 }
 
 @keyframes cover-drift {
@@ -1028,6 +1145,32 @@ button {
     0 26px 70px rgba(0, 0, 0, 0.46);
 }
 
+.world[data-phase="home"] {
+  padding: 0;
+}
+
+.world[data-phase="home"] .world-shell {
+  display: block;
+  width: min(100vw, calc(100vh * 1280 / 718));
+  max-width: none;
+  height: min(100vh, calc(100vw * 718 / 1280));
+  min-height: 0;
+  max-height: none;
+  aspect-ratio: 1280 / 718;
+}
+
+.world[data-phase="home"] .world-character-panel {
+  display: none;
+}
+
+.world[data-phase="home"] .world-story-stage {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .world-story-stage .screen {
   width: 100%;
   height: 100%;
@@ -1071,7 +1214,11 @@ button {
   margin: clamp(7px, 1.8cqh, 11px) auto;
 }
 
-.world-story-stage .result-message .lily-avatar {
+.world-story-stage .result-message.is-hidden {
+  display: none;
+}
+
+.world-story-stage .result-message .result-avatar {
   width: 36px;
   height: 36px;
   font-size: 15px;
@@ -1212,61 +1359,6 @@ button {
   background: rgba(13, 9, 12, 0.76);
 }
 
-.world[data-lily-transition="true"] .episode-backdrop {
-  background: #000;
-  filter: none;
-}
-
-.world[data-lily-transition="true"] .episode-card {
-  display: grid;
-  justify-items: center;
-  align-content: center;
-  border: 0;
-  background: #000;
-  box-shadow: none;
-  text-align: center;
-}
-
-.world[data-lily-transition="true"] .episode-card > .eyebrow,
-.world[data-lily-transition="true"] .episode-card > h2 {
-  display: none;
-}
-
-.world[data-lily-transition="true"] .episode-content {
-  display: grid;
-  justify-items: center;
-  gap: clamp(12px, 2vh, 20px);
-  width: min(720px, 92%);
-}
-
-.world[data-lily-transition="true"] .lily-transition-line {
-  max-width: 100%;
-  margin: 0;
-  color: #fff;
-  font-style: normal;
-  font-size: clamp(17px, 2.2vw, 27px);
-  font-weight: 450;
-  line-height: 1.48;
-  text-align: center;
-  text-wrap: balance;
-}
-
-.world[data-lily-transition="true"] .lily-transition-name {
-  color: #d8a43d;
-  font-weight: 800;
-}
-
-.world[data-lily-transition="true"] .lily-transition-emphasis {
-  font-weight: 800;
-}
-
-.world[data-lily-transition="true"] .lily-transition-translation {
-  color: rgba(255, 255, 255, 0.82);
-  font-size: clamp(15px, 1.8vw, 22px);
-  font-style: italic;
-  font-weight: 450;
-}
-
 .world[data-mode="episode"] .cinema-topline {
   right: max(20px, env(safe-area-inset-right));
   left: auto;
@@ -1317,6 +1409,12 @@ button {
   display: grid;
   justify-items: center;
   gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(224, 185, 111, 0.3);
+  border-radius: 18px;
+  background: rgba(4, 3, 5, 0.82);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(12px);
   transition: opacity 180ms ease, transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 

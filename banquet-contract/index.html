@@ -140,15 +140,60 @@
           <p class="eyebrow" data-copy="resultEyebrow"></p>
           <div id="result-seal" class="result-seal"><span id="result-score">0</span><small data-copy="points"></small></div>
           <h2 id="result-title"></h2>
-          <div class="result-message">
-            <div class="lily-avatar" aria-hidden="true">L</div>
+          <div class="result-message" data-speaker="lily">
+            <div class="result-avatar lily-avatar" aria-hidden="true">L</div>
             <p data-copy="resultLily"></p>
           </div>
-          <button id="restart-story" class="primary-action" type="button">
-            <span data-copy="restart"></span>
-            <i aria-hidden="true">↻</i>
+          <button id="result-continue" class="primary-action" type="button">
+            <span data-copy="resultContinue"></span>
+            <i aria-hidden="true">›</i>
           </button>
         </article>
+      </section>
+
+      <section id="home-screen" class="screen home-screen" aria-labelledby="home-title">
+        <h2 id="home-title" class="visually-hidden" data-copy="homeTitle"></h2>
+        <div class="home-canvas">
+          <img
+            class="home-background-art"
+            src="./ui/main-home-background-placeholder.svg"
+            alt=""
+          />
+          <p class="home-background-note" data-copy="homeBackgroundNote"></p>
+
+          <div class="home-character-frame">
+            <img
+              class="home-character-art"
+              src="./ui/main-home-character-placeholder.svg"
+              alt=""
+            />
+            <span class="home-character-label" data-copy="homeCharacterPlaceholder"></span>
+          </div>
+
+          <nav class="home-controls home-controls-left" aria-label="">
+            <button class="home-action home-action-immerse" type="button" data-home-action="immersive-companion">
+              <span data-copy="homeImmersiveCompanion"></span>
+            </button>
+            <button class="home-action home-action-background" type="button" data-home-action="change-background">
+              <span data-copy="homeChangeBackground"></span>
+            </button>
+            <button class="home-action home-action-chat" type="button" data-home-action="chat">
+              <span data-copy="homeChat"></span>
+            </button>
+          </nav>
+
+          <nav class="home-controls home-controls-right" aria-label="">
+            <button class="home-action home-action-poke" type="button" data-home-action="poke">
+              <span data-copy="homePoke"></span>
+            </button>
+            <button class="home-action home-action-outfit" type="button" data-home-action="change-outfit">
+              <span data-copy="homeChangeOutfit"></span>
+            </button>
+            <button id="home-continue-story" class="home-action home-action-continue" type="button" data-home-action="continue-story">
+              <span data-copy="homeContinueStory"></span>
+            </button>
+          </nav>
+        </div>
       </section>
         </section>
       </div>

@@ -3,22 +3,26 @@
 // storyteller 是 schema v1 manifest、dokiworld.app/2 runtime 的 World（episodeRenderer）。
 // 本脚本以模块内的 JS 对象作为单一事实来源，校验后输出 src/manifest.json，
 // 让 manifest 不再手写、始终与文档规范一致。build.mjs 会在生成 dist 前调用它。
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = resolve(root, "src");
 const defaultOutput = resolve(srcDir, "manifest.json");
+const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SEMVER_PATTERN = /^\d+\.\d+\.\d+$/;
 const REQUIRED_LOCALES = ["en", "zh-cn"];
 
 // —— manifest 单一事实来源 ——
 // 字段顺序即输出顺序，与原 src/manifest.json 保持一致。
 const manifest = {
   schemaVersion: 1,
+  version: packageJson.version,
   id: "storyteller",
+  kind: "world",
   status: "active",
   entry: "index.html",
   protocolVersion: 2,
@@ -61,6 +65,8 @@ function validate(target, src = srcDir) {
     errors.push(`entry "${target.entry}" 在 src/ 下不存在`);
   }
   if (target.schemaVersion !== 1) errors.push("schemaVersion 必须为 1");
+  if (!SEMVER_PATTERN.test(target.version)) errors.push("version 必须来自 package.json 且符合 semver");
+  if (target.kind !== "world") errors.push('kind 必须为 "world"');
   if (target.protocolVersion !== 2) errors.push("protocolVersion 必须为 2");
   if (target.runtime?.protocol !== "dokiworld.app" || target.runtime?.protocolVersion !== 2) {
     errors.push("runtime 必须使用 dokiworld.app v2");

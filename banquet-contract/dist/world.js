@@ -1,4 +1,4 @@
-// ../../dokiworld.git/packages/app-sdk/src/index.js
+// ../../dokiworld/packages/app-sdk/src/index.js
 var APP_PROTOCOL = "dokiworld.app";
 var APP_PROTOCOL_VERSION = 2;
 var MAX_ID_LENGTH = 200;
@@ -487,7 +487,7 @@ function createAppHost({
   });
 }
 
-// ../../dokiworld.git/packages/app-sdk/src/episode.js
+// ../../dokiworld/packages/app-sdk/src/episode.js
 var CLIENT_WIRE_TYPES = Object.freeze({
   "episode.start": "dokiworld-app-episode-start",
   "episode.restart": "dokiworld-app-episode-restart",
@@ -582,6 +582,36 @@ var WORLD_ID = "banquet-contract";
 var CHECKPOINT_CONTRACT = "doki.world.banquet-contract";
 var CHECKPOINT_VERSION = 1;
 var GAME_ID = "game-match3";
+var SECOND_ACT_VIDEO_ONE_SCENE = 3;
+var SECOND_ACT_VIDEO_TWO_SCENE = 4;
+var SECOND_ACT_VIDEO_ONE_SUBTITLES = [
+  [0, 7, 0],
+  [7, 12, 1],
+  [12, 18, 2],
+  [18, 24, 3],
+  [29, 36, 4],
+  [36, 44, 5],
+  [44, 51, 6],
+  [51, 60, 7],
+  [60, 69, 8],
+  [69, 74, 9],
+  [74, 81, 10],
+  [81, 86, 11],
+  [86, 93, 12],
+  [93, 97, 13],
+  [97, 105, 14],
+  [105, 113, 15]
+];
+var SECOND_ACT_VIDEO_TWO_SUBTITLES = [
+  [0, 6, 0],
+  [6, 14, 1],
+  [14, 19, 2],
+  [19, 24, 3],
+  [24, 32, 4],
+  [32, 39, 5],
+  [39, 47, 6],
+  [47, 52, 7]
+];
 var WRITING_NOTE_REVEAL_START = 5;
 var WRITING_NOTE_REVEAL_END = 7;
 var WRITING_CHOICE_OPTION_IDS = /* @__PURE__ */ new Set([
@@ -597,6 +627,7 @@ var COPY = {
     cardHover: "Click the card",
     coverCredit: "A Banquet Contract World",
     chapterLabel: "Act One: A Night Out of Control",
+    secondActChapterLabel: "Act Two: Yesterday\u2019s Memories",
     skip: "Skip \u203A",
     play: "Play video",
     pause: "Pause video",
@@ -609,15 +640,65 @@ var COPY = {
     matchTitle: "Successfully steady Lily and keep her from discovering the \u201Ctruth\u201D about last night.",
     matchMoves: "10 moves",
     matchGoal: "Score as high as possible within 10 moves; Level 1 requires no specific match pattern.",
+    secondActMatchTitle: "Complete the \u201Cperfect\u201D speech Ryan will use tonight.",
+    secondActMatchGoal: "Score as high as possible within 10 moves.",
     gameLoading: "Preparing the puzzle\u2026",
     resultEyebrow: "Chapter result",
+    secondActResultEyebrow: "Match-three result",
     points: "points",
     resultPerfectTitle: "Perfect",
     resultGoodTitle: "Good",
     resultPassTitle: "Pass",
     resultFailTitle: "Fail",
     resultLily: "Okay\u2026 get some rest. But call me later. I want the whole story.",
-    restart: "Replay episode",
+    secondActFeedbackPerfect: "Ryan reads it once, smiles, and says, \u201CPerfect. I\u2019ll use this tonight.\u201D",
+    secondActFeedbackGood: "Ryan nods. \u201CThis works. Give it one final polish before tonight.\u201D",
+    secondActFeedbackPass: "Ryan sets the draft down. \u201CIt will do, but the key lines still need tightening.\u201D",
+    secondActFeedbackFail: "Ryan shakes his head. \u201CNot yet. The speech needs another rewrite.\u201D",
+    resultContinue: "Continue",
+    resultRestart: "Restart",
+    homeTitle: "Main interface",
+    homeBackgroundNote: "Warm background scene (interior or exterior)",
+    homeCharacterPlaceholder: "CHARACTER\nART",
+    homePrimaryControlsLabel: "Companion controls",
+    homeSecondaryControlsLabel: "Character and story controls",
+    homeImmersiveCompanion: "IMMERSIVE\nCOMPANION",
+    homeChangeBackground: "CHANGE\nBACKGROUND",
+    homeChat: "CHAT",
+    homePoke: "POKE",
+    homeChangeOutfit: "CHANGE\nOUTFIT",
+    homeContinueStory: "CONTINUE\nSTORY",
+    secondActUnavailable: "Act Two video assets are not ready yet.",
+    secondActChoiceA: "A complete stranger pretending to be my boyfriend? Absolutely not.",
+    secondActChoiceB: "If it gets me through tonight\u2026 I\u2019ll try it.",
+    secondActVideo1: [
+      "How did one stupid company event turn into all of this?",
+      "Two weeks of overtime. Hundreds of guests. One final event.",
+      "The project bonus will cover Dad\u2019s next round of treatment.",
+      "So no matter what happens tonight, I can\u2019t afford to mess this up.",
+      "Elena\u2019s still working? God, hasn\u2019t she been pulling crazy hours for almost two months now?",
+      "Yeah. She looks exhausted. And apparently her ex, Ryan, is showing up tonight as the project lead and taking credit for the whole thing.",
+      "Please. He only got that position because he hooked up with Vanessa\u2014the CEO\u2019s daughter. No way he would\u2019ve gotten it otherwise.",
+      "And I heard he was already chasing Vanessa while he was still with Elena. The second Vanessa took the bait, he dumped Elena and started telling everyone she was the one who\u2019d been chasing him all along.",
+      "Oh poor Elena, tonight\u2019s going to be brutal for her. She has to watch her ex take credit for her work\u2014and still smile at Vanessa because she needs that project bonus.",
+      "At least Lily will be there.",
+      "I can survive one night. Get the bonus, pay Dad\u2019s medical bill, and move on.",
+      "Elena, please don\u2019t kill me.",
+      "Something urgent came up. I can\u2019t make it tonight. I\u2019m so so sorry.",
+      "But I have a backup plan!",
+      "My cousin Alex just got back from London. He\u2019s free tonight, and I asked him to accompany you.",
+      "Just introduce him as your new boyfriend. I already told him to make sure you look damn good tonight."
+    ],
+    secondActVideo2: [
+      "Before you can even answer, Lily makes the decision for you.",
+      "He\u2019ll be waiting at the hotel entrance. Tall, dark hair, black suit. You can\u2019t miss him.",
+      "Love you! I\u2019ve gotta go. Bye!",
+      "Elena, one more thing before you leave.",
+      "Vanessa has decided that Ryan will deliver the closing speech tonight on behalf of management.",
+      "Since you know the project better than anyone, you\u2019ll write the speech for him.",
+      "Make it polished. Vanessa wants Ryan to sound like he led the project from the beginning.",
+      "Send it to me before you leave for the hotel."
+    ],
     episodeEyebrow: "Interactive episode",
     episodeContinue: "Continue",
     episodeLoading: "Preparing the next episode\u2026",
@@ -625,7 +706,6 @@ var COPY = {
     episodeError: "The episode could not continue. Please try again.",
     episodeAuthenticationRequired: "Sign in to continue this episode.",
     episodeRetry: "Try again",
-    episodeTransitionContinue: "Continue",
     writingChoicePrompt: "But I can\u2019t just disappear. I should leave him a note\u2026",
     characterPortrait: "Adrian character portrait",
     storyStage: "Interactive story",
@@ -644,8 +724,7 @@ var COPY = {
     episodeText: {
       "episode-one-narration": "But I can\u2019t just disappear. I should leave him a note\u2026",
       "episode-one-a-line": "Alex: Last night was a huge mistake. I had way too much to drink. Please forget this ever happened, and absolutely do not tell Lily. I am so sorry!",
-      "episode-one-b-line": "You clearly define last night as an accident, draw a firm boundary, and leave the note under the water glass.",
-      "episode-two-lily-narration": "Meanwhile, just as you leave the hotel, a message from Lily pops up. She wants to know what happened last night. You need to come up with a convincing excuse\u2014and fast."
+      "episode-one-b-line": "You clearly define last night as an accident, draw a firm boundary, and leave the note under the water glass."
     },
     episodeChoices: {
       "apologize-and-hide": "Apologize and ask him to keep it a secret.",
@@ -664,6 +743,7 @@ var COPY = {
     cardHover: "\u70B9\u51FB\u5361\u9762",
     coverCredit: "Banquet Contract \u539F\u521B World",
     chapterLabel: "\u7B2C\u4E00\u5E55\uFF1A\u4E00\u591C\u5931\u63A7",
+    secondActChapterLabel: "\u7B2C\u4E8C\u5E55\uFF1A\u6628\u65E5\u56DE\u5FC6",
     skip: "\u8DF3\u8FC7 \u203A",
     play: "\u64AD\u653E\u89C6\u9891",
     pause: "\u6682\u505C\u89C6\u9891",
@@ -676,15 +756,65 @@ var COPY = {
     matchTitle: "\u6210\u529F\u7A33\u4F4FLily\uFF0C\u4E0D\u8BA9Lily\u53D1\u73B0\u6628\u665A\u7684\u201C\u771F\u76F8\u201D",
     matchMoves: "\u9650\u5B9A10\u6B65",
     matchGoal: "\u9650\u5B9A10\u6B65\uFF0C\u770B\u6700\u9AD8\u83B7\u5F97\u51E0\u5206\uFF08\u7B2C\u4E00\u5173\u4E0D\u505A\u7279\u5B9A\u7684\u6D88\u9664\u56FE\u6848\u8981\u6C42\uFF09",
+    secondActMatchTitle: "\u5B8C\u6210Ryan\u4ECA\u665A\u4F7F\u7528\u7684\u201C\u5B8C\u7F8E\u201D\u6F14\u8BB2\u7A3F\u3002",
+    secondActMatchGoal: "\u9650\u5B9A10\u6B65\uFF0C\u770B\u6700\u9AD8\u83B7\u5F97\u591A\u5C11\u5206\u3002",
     gameLoading: "\u6B63\u5728\u51C6\u5907\u4E09\u6D88\u5173\u5361\u2026",
     resultEyebrow: "\u7B2C\u4E00\u7AE0\u7ED3\u679C",
+    secondActResultEyebrow: "\u4E09\u6D88\u7ED3\u7B97\u753B\u9762",
     points: "\u5206",
     resultPerfectTitle: "Perfect",
     resultGoodTitle: "\u826F\u597D",
     resultPassTitle: "\u5408\u683C",
     resultFailTitle: "\u672A\u901A\u8FC7",
     resultLily: "\u597D\u5427\u2026\u2026\u4F60\u5148\u4F11\u606F\u3002\u4E0D\u8FC7\u665A\u70B9\u4E00\u5B9A\u8981\u6253\u7ED9\u6211\uFF0C\u6211\u8981\u542C\u5B8C\u6574\u7ECF\u8FC7\u3002",
-    restart: "\u91CD\u65B0\u4F53\u9A8C\u672C\u7AE0",
+    secondActFeedbackPerfect: "Ryan\u8BFB\u5B8C\u540E\u6EE1\u610F\u5730\u70B9\u5934\uFF1A\u201C\u5F88\u5B8C\u7F8E\uFF0C\u4ECA\u665A\u5C31\u7528\u8FD9\u4E00\u7248\u3002\u201D",
+    secondActFeedbackGood: "Ryan\u70B9\u70B9\u5934\uFF1A\u201C\u8FD9\u7248\u80FD\u7528\uFF0C\u4ECA\u665A\u4E4B\u524D\u518D\u6DA6\u8272\u4E00\u4E0B\u3002\u201D",
+    secondActFeedbackPass: "Ryan\u653E\u4E0B\u6F14\u8BB2\u7A3F\uFF1A\u201C\u52C9\u5F3A\u80FD\u7528\uFF0C\u4F46\u5173\u952E\u53E5\u8FD8\u9700\u8981\u518D\u6536\u7D27\u3002\u201D",
+    secondActFeedbackFail: "Ryan\u6447\u4E86\u6447\u5934\uFF1A\u201C\u8FD8\u4E0D\u884C\uFF0C\u8FD9\u4EFD\u6F14\u8BB2\u7A3F\u9700\u8981\u91CD\u5199\u3002\u201D",
+    resultContinue: "\u7EE7\u7EED",
+    resultRestart: "\u91CD\u65B0\u5F00\u59CB",
+    homeTitle: "\u4E3B\u754C\u9762",
+    homeBackgroundNote: "\u80CC\u666F\u662F\u6E29\u99A8\u573A\u666F\uFF08\u5BA4\u5185\u5BA4\u5916\u90FD\u53EF\uFF09",
+    homeCharacterPlaceholder: "\u8FD9\u662F\u7ACB\u7ED8",
+    homePrimaryControlsLabel: "\u966A\u4F34\u529F\u80FD",
+    homeSecondaryControlsLabel: "\u89D2\u8272\u4E0E\u5267\u60C5\u529F\u80FD",
+    homeImmersiveCompanion: "\u6C89\u6D78\n\u966A\u4F34",
+    homeChangeBackground: "\u66F4\u6362\n\u80CC\u666F",
+    homeChat: "\u95F2\n\u804A",
+    homePoke: "\u6233\n\u6233",
+    homeChangeOutfit: "\u6362\n\u88C5",
+    homeContinueStory: "\u7EE7\u7EED\n\u5267\u60C5",
+    secondActUnavailable: "\u7B2C\u4E8C\u5E55\u89C6\u9891\u8D44\u6E90\u5C1A\u672A\u5C31\u7EEA\u3002",
+    secondActChoiceA: "\u8BA9\u4E00\u4E2A\u5B8C\u5168\u4E0D\u8BA4\u8BC6\u7684\u4EBA\u5047\u88C5\u6211\u7537\u670B\u53CB\uFF1F\u7EDD\u5BF9\u4E0D\u884C\u3002",
+    secondActChoiceB: "\u5982\u679C\u8FD9\u6837\u80FD\u8BA9\u6211\u6491\u8FC7\u4ECA\u665A\u2026\u2026\u6211\u53EF\u4EE5\u8BD5\u8BD5\u3002",
+    secondActVideo1: [
+      "\u4E00\u573A\u8BE5\u6B7B\u7684\u516C\u53F8\u6D3B\u52A8\uFF0C\u600E\u4E48\u4F1A\u53D8\u6210\u73B0\u5728\u8FD9\u6837\uFF1F",
+      "\u8FDE\u7EED\u52A0\u73ED\u4E24\u4E2A\u661F\u671F\uFF0C\u51E0\u767E\u540D\u5609\u5BBE\uFF0C\u6700\u540E\u8FD9\u4E00\u573A\u6D3B\u52A8\u3002",
+      "\u8FD9\u4E2A\u9879\u76EE\u7684\u5956\u91D1\uFF0C\u6B63\u597D\u80FD\u591F\u652F\u4ED8\u7238\u7238\u4E0B\u4E00\u9636\u6BB5\u7684\u6CBB\u7597\u8D39\u3002",
+      "\u6240\u4EE5\u65E0\u8BBA\u4ECA\u665A\u53D1\u751F\u4EC0\u4E48\uFF0C\u6211\u90FD\u7EDD\u4E0D\u80FD\u628A\u4E8B\u60C5\u641E\u7838\u3002",
+      "Elena\u8FD8\u5728\u52A0\u73ED\uFF1F\u5929\u5450\uFF0C\u5979\u662F\u4E0D\u662F\u5DF2\u7ECF\u75AF\u72C2\u52A0\u73ED\u5FEB2\u4E2A\u6708\u4E86\uFF1F",
+      "\u662F\u554A\uFF0C\u6211\u770B\u5979\u6700\u8FD1\u53EF\u6194\u60B4\u4E86\uFF0C\u4F46\u662F\u6211\u542C\u8BF4\u554A\uFF0C\u5979\u524D\u7537\u53CBRyan\u8981\u4F5C\u4E3A\u8FD9\u4E2A\u9879\u76EE\u7684\u8D1F\u8D23\u4EBA\u51FA\u5E2D\u5462\uFF0C\u8FD8\u628A\u529F\u52B3\u90FD\u63FD\u5230\u4E86\u81EA\u5DF1\u8EAB\u4E0A\uFF01",
+      "\u5567\u5567\u5567\uFF0C\u4ED6\u4E5F\u5C31\u662F\u508D\u4E0A\u4E86\u603B\u88C1\u7684\u5973\u513FVanessa\uFF0C\u4E0D\u7136\u8D1F\u8D23\u4EBA\u7684\u4F4D\u7F6E\u600E\u4E48\u4F1A\u8F6E\u5F97\u5230\u4ED6\u3002",
+      "\u6211\u8FD8\u542C\u8BF4\u554A\uFF0C\u4ED6\u662F\u8FD8\u5728\u548CElena\u8C08\u7684\u65F6\u5019\u5C31\u8D39\u5C3D\u5FC3\u601D\u53BB\u52FE\u642DVanessa\u4E86\uFF0C\u4E00\u508D\u4E0A\u4E4B\u540E\u7ACB\u9A6C\u8BF4\u4E4B\u524D\u90FD\u662FElena\u5012\u8D34\u4ED6\u5462\uFF01",
+      "\u90A3\u4ECA\u665A\u7684\u6D3B\u52A8\uFF0CElena\u5C82\u4E0D\u662F\u5F88\u5BB9\u6613\u96BE\u582A\uFF1F\u773C\u770B\u7740\u524D\u7537\u53CB\u8981\u62FF\u5C5E\u4E8E\u81EA\u5DF1\u7684\u8363\u8A89\u548C\u6210\u679C\uFF0C\u4F46\u662F\u4E3A\u4E86\u9879\u76EE\u5956\u91D1\uFF0C\u8FD8\u5F97\u5BF9Vanessa\u7B11\u8138\u76F8\u8FCE\u3002",
+      "\u81F3\u5C11Lily\u4E4B\u524D\u8BF4\u4F1A\u548C\u6211\u4E00\u8D77\u53C2\u52A0\u6D3B\u52A8\uFF0C\u966A\u6211\u6E21\u8FC7\u4ECA\u665A\u3002",
+      "\u6211\u53EA\u9700\u8981\u6491\u8FC7\u8FD9\u4E00\u665A\u3002\u62FF\u5230\u5956\u91D1\uFF0C\u4EA4\u4E0A\u7238\u7238\u7684\u6CBB\u7597\u8D39\uFF0C\u7136\u540E\u5F7B\u5E95\u5411\u524D\u8D70\u3002",
+      "Elena\uFF0C\u4F60\u5148\u7B54\u5E94\u4E0D\u8981\u6740\u4E86\u6211\u3002",
+      "\u6211\u4E34\u65F6\u9047\u5230\u4E86\u4E00\u4EF6\u6025\u4E8B\uFF0C\u4ECA\u665A\u53BB\u4E0D\u4E86\u4E86\u3002\u771F\u7684\u975E\u5E38\u62B1\u6B49\u3002",
+      "\u4F46\u662F\u6211\u51C6\u5907\u4E86\u4E00\u4E2A\u8865\u6551\u65B9\u6848\uFF01",
+      "\u6211\u8868\u54E5Alex\u521A\u4ECE\u4F26\u6566\u56DE\u6765\u3002\u4ED6\u4ECA\u665A\u6B63\u597D\u6709\u7A7A\uFF0C\u6211\u5DF2\u7ECF\u62DC\u6258\u4ED6\u966A\u4F60\u53C2\u52A0\u665A\u5BB4\u4E86\u3002",
+      "\u4F60\u5C31\u628A\u4ED6\u4ECB\u7ECD\u6210\u4F60\u7684\u65B0\u7537\u670B\u53CB\u3002\u6211\u5DF2\u7ECF\u544A\u8BC9\u4ED6\u8981\u66FF\u4F60\u597D\u597D\u6491\u4E00\u6491\u4ECA\u665A\u7684\u573A\u9762\uFF01"
+    ],
+    secondActVideo2: [
+      "\u8FD8\u6CA1\u7B49\u4F60\u56DE\u590D\uFF0CLily\u5DF2\u7ECF\u6700\u7EC8\u62CD\u677F\u4E86\u3002",
+      "\u5C31\u8FD9\u4E48\u5B9A\u4E86\uFF01\u4ED6\u4F1A\u5728\u9152\u5E97\u95E8\u53E3\u7B49\u4F60\u3002\u4E2A\u5B50\u5F88\u9AD8\uFF0C\u6DF1\u8272\u5934\u53D1\uFF0C\u7A7F\u9ED1\u8272\u897F\u88C5\u3002\u4F60\u7EDD\u5BF9\u4E0D\u4F1A\u8BA4\u9519\u3002",
+      "\u7231\u4F60\u54E6\uFF01\u6211\u6709\u4E8B\u5148\u6302\u4E86\uFF01",
+      "Elena\uFF0C\u4F60\u79BB\u5F00\u524D\u8FD8\u6709\u4E00\u4EF6\u4E8B\u3002",
+      "Vanessa\u4E34\u65F6\u51B3\u5B9A\uFF0C\u7531Ryan\u4EE3\u8868\u7BA1\u7406\u5C42\u53D1\u8868\u4ECA\u665A\u7684\u95ED\u5E55\u6F14\u8BB2\u3002",
+      "\u65E2\u7136\u4F60\u6BD4\u4EFB\u4F55\u4EBA\u90FD\u4E86\u89E3\u8FD9\u4E2A\u9879\u76EE\uFF0C\u4ED6\u7684\u6F14\u8BB2\u7A3F\u5C31\u7531\u4F60\u6765\u5199\u3002",
+      "\u628A\u7A3F\u5B50\u5199\u5F97\u6F02\u4EAE\u4E00\u70B9\u3002Vanessa\u5E0C\u671BRyan\u542C\u8D77\u6765\u50CF\u662F\u4ECE\u4E00\u5F00\u59CB\u5C31\u5728\u9886\u5BFC\u8FD9\u4E2A\u9879\u76EE\u3002",
+      "\u53BB\u9152\u5E97\u4E4B\u524D\u53D1\u7ED9\u6211\u3002"
+    ],
     episodeEyebrow: "\u4E92\u52A8\u5267\u96C6",
     episodeContinue: "\u7EE7\u7EED",
     episodeLoading: "\u6B63\u5728\u51C6\u5907\u4E0B\u4E00\u6BB5\u5267\u60C5\u2026",
@@ -692,7 +822,6 @@ var COPY = {
     episodeError: "\u5267\u60C5\u6682\u65F6\u65E0\u6CD5\u7EE7\u7EED\uFF0C\u8BF7\u91CD\u8BD5\u3002",
     episodeAuthenticationRequired: "\u8BF7\u5148\u767B\u5F55\uFF0C\u518D\u7EE7\u7EED\u672C\u96C6\u5267\u60C5\u3002",
     episodeRetry: "\u91CD\u8BD5",
-    episodeTransitionContinue: "Continue",
     writingChoicePrompt: "\u4F46\u6211\u4E5F\u4E0D\u80FD\u5C31\u8FD9\u4E48\u6D88\u5931\uFF0C\u81F3\u5C11\u8BE5\u7ED9\u4ED6\u7559\u5F20\u4FBF\u6761\u2026\u2026",
     characterPortrait: "Adrian \u89D2\u8272\u7ACB\u7ED8",
     storyStage: "\u4E92\u52A8\u5267\u60C5",
@@ -711,8 +840,7 @@ var COPY = {
     episodeText: {
       "episode-one-narration": "\u4F46\u6211\u4E5F\u4E0D\u80FD\u5C31\u8FD9\u4E48\u6D88\u5931\uFF0C\u81F3\u5C11\u8BE5\u7ED9\u4ED6\u7559\u5F20\u4FBF\u6761\u2026\u2026",
       "episode-one-a-line": "Alex\uFF1A\u6628\u665A\u53EA\u662F\u4E2A\u610F\u5916\uFF0C\u975E\u5E38\u62B1\u6B49\uFF0C\u6211\u559D\u592A\u591A\u4E86\u3002\u8BF7\u4F60\u52A1\u5FC5\u628A\u8FD9\u4EF6\u4E8B\u5FD8\u6389\uFF0C\u5343\u4E07\u4E0D\u8981\u544A\u8BC9\u8389\u8389\uFF01\u771F\u7684\u5F88\u5BF9\u4E0D\u8D77\uFF01",
-      "episode-one-b-line": "\u4F60\u628A\u6628\u665A\u6E05\u695A\u5730\u5B9A\u4E49\u4E3A\u4E00\u573A\u610F\u5916\uFF0C\u5212\u4E0B\u754C\u9650\uFF0C\u7136\u540E\u628A\u7EB8\u6761\u538B\u5728\u6C34\u676F\u4E0B\u3002",
-      "episode-two-lily-narration": "\u4E0E\u6B64\u540C\u65F6\uFF0C\u521A\u79BB\u5F00\u9152\u5E97\u7684\u4F60\u6536\u5230\u4E86Lily\u7684\u6D88\u606F\uFF0C\u5979\u6B63\u8BE2\u95EE\u7740\u4F60\u5173\u4E8E\u6628\u665A\u7684\u4E8B\u60C5\u3002\n\u4F60\u5FC5\u987B\u8FC5\u901F\u60F3\u51FA\u4E00\u4E2A\u597D\u7684\u7406\u7531\u628A\u6628\u665A\u5706\u8FC7\u53BB\u3002"
+      "episode-one-b-line": "\u4F60\u628A\u6628\u665A\u6E05\u695A\u5730\u5B9A\u4E49\u4E3A\u4E00\u573A\u610F\u5916\uFF0C\u5212\u4E0B\u754C\u9650\uFF0C\u7136\u540E\u628A\u7EB8\u6761\u538B\u5728\u6C34\u676F\u4E0B\u3002"
     },
     episodeChoices: {
       "apologize-and-hide": "\u8868\u793A\u62B1\u6B49\uFF0C\u8BF7\u4ED6\u66FF\u4F60\u4FDD\u5BC6",
@@ -735,15 +863,27 @@ var progressFill = document.querySelector("#cinema-progress-fill");
 var videoBackdrop = document.querySelector(".video-backdrop");
 var videoToggle = document.querySelector("#video-toggle");
 var videoControlLabel = document.querySelector("[data-video-control-label]");
+var chapterLabel = document.querySelector(".cinema-topline [data-copy='chapterLabel']");
 var skipVideo = document.querySelector("#skip-video");
 var matchFrame = document.querySelector("#match-game");
 var gameLoading = document.querySelector("#game-loading");
+var matchTitle = document.querySelector("#match-title");
+var matchGoal = document.querySelector(".match-objective b");
 var episodeTitle = document.querySelector("#episode-title");
 var episodeContent = document.querySelector("#episode-content");
-var episodeCard = document.querySelector(".episode-card");
 var episodeContinue = document.querySelector("#episode-continue");
-var episodeContinueLabel = episodeContinue.querySelector(".episode-action-label");
 var episodeRetry = document.querySelector("#episode-retry");
+var homeCanvas = document.querySelector(".home-canvas");
+var homeContinueStory = document.querySelector("#home-continue-story");
+var resultEyebrow = document.querySelector("#result-screen .eyebrow");
+var resultMessage = document.querySelector("#result-screen .result-message");
+var resultFeedbackAvatar = resultMessage.querySelector(".result-avatar");
+var resultFeedbackText = resultMessage.querySelector("p");
+var resultActionButton = document.querySelector("#result-continue");
+var resultActionLabel = resultActionButton.querySelector("[data-copy]");
+var resultActionIcon = resultActionButton.querySelector("i");
+var homePrimaryControls = document.querySelector(".home-controls-left");
+var homeSecondaryControls = document.querySelector(".home-controls-right");
 var worldCharacterArt = document.querySelector("#world-character-art");
 var worldCharacterPanel = document.querySelector("#world-character-panel");
 var worldStoryStage = document.querySelector("#world-story-stage");
@@ -764,6 +904,7 @@ var sceneNumber = 0;
 var choice = "A";
 var gameRunId = "";
 var acceptedGameResult = false;
+var secondActActive = false;
 var initialized = false;
 var media = null;
 var experience = null;
@@ -782,6 +923,7 @@ var writingChoiceAwaitingContinuation = false;
 var playWritingVideoAfterChoice = false;
 var selectedWritingNote = "";
 var hasSelectedWritingNote = false;
+var latestResult = null;
 function setPhase(nextPhase) {
   const nextScreenId = `${nextPhase}-screen`;
   const activeElement = document.activeElement;
@@ -812,7 +954,16 @@ function applyCopy() {
   });
   worldCharacterPanel.setAttribute("aria-label", copy.characterPortrait);
   worldStoryStage.setAttribute("aria-label", copy.storyStage);
+  homePrimaryControls.setAttribute("aria-label", copy.homePrimaryControlsLabel);
+  homeSecondaryControls.setAttribute("aria-label", copy.homeSecondaryControlsLabel);
+  syncResultAction();
+  syncSecondActAvailability();
   syncVideoControl();
+}
+function syncResultAction() {
+  const restartsStory = phase === "result" && secondActActive;
+  resultActionLabel.textContent = restartsStory ? copy.resultRestart : copy.resultContinue;
+  resultActionIcon.textContent = restartsStory ? "\u21BB" : "\u203A";
 }
 function syncVideoControl() {
   const isPlaying = !storyVideo.paused && !storyVideo.ended;
@@ -923,8 +1074,15 @@ function readMedia(candidate) {
   if (!candidate || typeof candidate !== "object") return null;
   const video1 = candidate.video1;
   const video2 = candidate.video2;
+  const secondActVideo1 = typeof candidate.secondActVideo1 === "string" ? candidate.secondActVideo1.trim() : "";
+  const secondActVideo2 = typeof candidate.secondActVideo2 === "string" ? candidate.secondActVideo2.trim() : "";
   if (typeof video1 !== "string" || typeof video2 !== "string" || !video1.trim() || !video2.trim()) return null;
-  return { video1, video2 };
+  return {
+    video1,
+    video2,
+    ...secondActVideo1 ? { secondActVideo1 } : {},
+    ...secondActVideo2 ? { secondActVideo2 } : {}
+  };
 }
 function readExperience(candidate) {
   if (!candidate || typeof candidate !== "object") return null;
@@ -1068,6 +1226,14 @@ function clearCheckpoint() {
   world.dataset.checkpointState = "clearing";
   postWorldEvent("dokiworld-app-checkpoint-clear");
 }
+function checkpointResult(value) {
+  if (!value || typeof value !== "object" || !Number.isFinite(value.points) || !Number.isFinite(value.gradePoints) || value.points < 0 || value.gradePoints < 0) return null;
+  return {
+    points: Math.floor(value.points),
+    gradePoints: Math.floor(value.gradePoints),
+    secondAct: value.secondAct === true
+  };
+}
 function restoreCheckpoint(candidate) {
   if (!candidate || typeof candidate !== "object") return false;
   if (candidate.contract === CHECKPOINT_CONTRACT && candidate.version === CHECKPOINT_VERSION && candidate.data && typeof candidate.data === "object") {
@@ -1077,7 +1243,7 @@ function restoreCheckpoint(candidate) {
     preloadNextEpisodeVideo();
     preloadNextEpisodeGame();
     if (checkpointData.screen === "lily-transition" && episodeMode) {
-      showLilyTransition({ persist: false });
+      renderNextEpisodeSegment();
       return true;
     }
     if (checkpointData.screen === "episode-text" && episodeMode) {
@@ -1094,11 +1260,13 @@ function restoreCheckpoint(candidate) {
         return true;
       }
     }
-    if (checkpointData.screen === "result") {
-      const result = checkpointData.current;
-      if (result && typeof result === "object" && Number.isFinite(result.points) && Number.isFinite(result.gradePoints) && result.points >= 0 && result.gradePoints >= 0) {
+    if (checkpointData.screen === "result" || checkpointData.screen === "home") {
+      const result = checkpointResult(checkpointData.current);
+      if (result) {
         acceptedGameResult = true;
-        showResult({ metrics: result }, { persist: false });
+        secondActActive = result.secondAct;
+        if (checkpointData.screen === "home") showHome(result, { persist: false });
+        else showResult({ metrics: result }, { persist: false });
         return true;
       }
     }
@@ -1110,8 +1278,8 @@ function restoreCheckpoint(candidate) {
     return false;
   }
   if (candidate.kind === "lily-transition") {
-    clearCheckpoint();
-    return false;
+    startGame();
+    return true;
   }
   if (candidate.kind === "result" && Number.isFinite(candidate.points) && Number.isFinite(candidate.gradePoints) && candidate.points >= 0 && candidate.gradePoints >= 0) {
     acceptedGameResult = true;
@@ -1183,19 +1351,12 @@ function localizeEpisodeSegment(segment) {
     ...Array.isArray(options) ? { options } : {}
   };
 }
-function setLilyTransition(active) {
-  world.dataset.lilyTransition = String(active);
-  episodeCard.classList.toggle("is-lily-transition", active);
-  episodeContinue.classList.toggle("is-transition-continue", active);
-  episodeContinueLabel.textContent = active ? copy.episodeTransitionContinue : copy.episodeContinue;
-}
 function setWritingChoiceState(active) {
   world.dataset.writingChoice = String(active);
 }
 function showEpisodeWaiting() {
   world.dataset.episodeState = "waiting";
   setWritingChoiceState(false);
-  setLilyTransition(false);
   episodeTitle.textContent = experience?.title || copy.episodeEyebrow;
   episodeContent.replaceChildren();
   const status = document.createElement("p");
@@ -1209,7 +1370,6 @@ function showEpisodeWaiting() {
 function showEpisodeEnd() {
   world.dataset.episodeState = "complete";
   setWritingChoiceState(false);
-  setLilyTransition(false);
   episodeTitle.textContent = experience?.title || copy.episodeEyebrow;
   episodeContent.replaceChildren();
   const message = document.createElement("p");
@@ -1220,45 +1380,9 @@ function showEpisodeEnd() {
   episodeRetry.classList.add("is-hidden");
   setPhase("episode");
 }
-function showLilyTransition({ persist = true } = {}) {
-  world.dataset.episodeState = "transition";
-  setWritingChoiceState(false);
-  setLilyTransition(true);
-  episodeContent.replaceChildren();
-  const firstLine = document.createElement("p");
-  firstLine.className = "episode-line lily-transition-line";
-  firstLine.append(
-    "Meanwhile, just as you leave the hotel, a message from "
-  );
-  const lily = document.createElement("strong");
-  lily.className = "lily-transition-name";
-  lily.textContent = "Lily";
-  firstLine.append(lily, " pops up.");
-  const secondLine = document.createElement("p");
-  secondLine.className = "episode-line lily-transition-line";
-  secondLine.textContent = "She wants to know what happened last night.";
-  const thirdLine = document.createElement("p");
-  thirdLine.className = "episode-line lily-transition-line lily-transition-emphasis";
-  thirdLine.textContent = "You need to come up with a convincing excuse\u2014and fast.";
-  episodeContent.append(firstLine, secondLine, thirdLine);
-  if (locale === "zh-cn") {
-    const translatedFirstLine = document.createElement("p");
-    translatedFirstLine.className = "episode-line lily-transition-line lily-transition-translation";
-    translatedFirstLine.textContent = "\uFF08\u4E0E\u6B64\u540C\u65F6\uFF0C\u521A\u79BB\u5F00\u9152\u5E97\u7684\u4F60\u6536\u5230\u4E86Lily\u7684\u6D88\u606F\uFF0C\u5979\u6B63\u8BE2\u95EE\u7740\u4F60\u5173\u4E8E\u6628\u665A\u7684\u4E8B\u60C5\u3002";
-    const translatedSecondLine = document.createElement("p");
-    translatedSecondLine.className = "episode-line lily-transition-line lily-transition-translation";
-    translatedSecondLine.textContent = "\u4F60\u5FC5\u987B\u8FC5\u901F\u60F3\u51FA\u4E00\u4E2A\u597D\u7684\u7406\u7531\u628A\u6628\u665A\u5706\u8FC7\u53BB\u3002\uFF09";
-    episodeContent.append(translatedFirstLine, translatedSecondLine);
-  }
-  episodeContinue.classList.remove("is-hidden");
-  episodeRetry.classList.add("is-hidden");
-  setPhase("episode");
-  if (persist) publishCheckpoint(checkpointEnvelope("lily-transition"));
-}
 function showEpisodeText(lines, { persist = true } = {}) {
   world.dataset.episodeState = "active";
   const firstSpeaker = lines.find((item) => item.speakerName)?.speakerName;
-  setLilyTransition(false);
   episodeTitle.textContent = firstSpeaker || experience?.title || copy.episodeEyebrow;
   episodeContent.replaceChildren();
   for (const { segment } of lines) {
@@ -1284,18 +1408,17 @@ function renderEpisodeText() {
     if (!["dialogue", "action", "thought", "narration"].includes(next.segment.type)) break;
     lines.push(episodeQueue.shift());
   }
-  const isLilyTransition = lines.some(
-    (item) => item.segment.id === "episode-two-lily-narration"
+  const visibleLines = lines.filter(
+    (item) => item.segment.id !== "episode-two-lily-narration"
   );
-  if (isLilyTransition) {
-    showLilyTransition();
+  if (visibleLines.length === 0) {
+    renderNextEpisodeSegment();
     return;
   }
-  showEpisodeText(lines);
+  showEpisodeText(visibleLines);
 }
 function renderEpisodeImage(item, { persist = true } = {}) {
   world.dataset.episodeState = "active";
-  setLilyTransition(false);
   episodeTitle.textContent = item.speakerName || experience?.title || copy.episodeEyebrow;
   episodeContent.replaceChildren();
   const image = document.createElement("img");
@@ -1334,9 +1457,9 @@ function showWritingChoiceOverlay() {
   videoChoiceList.querySelector("button")?.focus();
 }
 function renderEpisodeChoices(item) {
-  setLilyTransition(false);
   const { segment } = item;
   const writingChoice = isWritingChoiceSegment(segment);
+  videoChoicePrompt.hidden = false;
   setWritingChoiceState(false);
   writingChoiceItem = writingChoice ? item : null;
   videoChoicePrompt.textContent = writingChoice ? copy.writingChoicePrompt : typeof segment.text === "string" ? segment.text : copy.choiceTitle;
@@ -1437,6 +1560,7 @@ async function playEpisodeVideo(item) {
     return;
   }
   sceneNumber = item.segment.assetId === "video-night-one" ? 1 : item.segment.assetId === "video-who-is-alex" ? 2 : 0;
+  chapterLabel.textContent = copy.chapterLabel;
   playWritingVideoAfterChoice = false;
   setPhase("video");
   setWritingChoiceState(false);
@@ -1524,21 +1648,79 @@ function videoOverlayAt(time) {
   if (sceneNumber === 2 && time >= 17 && time < 21.2) return overlayMarkup(copy.video2Message);
   if (sceneNumber === 2 && time >= 21.2 && time < 24.3) return overlayMarkup(copy.video2Order);
   if (sceneNumber === 2 && time >= 24.3) return overlayMarkup(copy.video2Final);
+  if (sceneNumber === SECOND_ACT_VIDEO_ONE_SCENE) {
+    const segment = SECOND_ACT_VIDEO_ONE_SUBTITLES.find(([start, end]) => time >= start && time < end);
+    return segment ? overlayMarkup(copy.secondActVideo1[segment[2]]) : "";
+  }
+  if (sceneNumber === SECOND_ACT_VIDEO_TWO_SCENE) {
+    const segment = SECOND_ACT_VIDEO_TWO_SUBTITLES.find(([start, end]) => time >= start && time < end);
+    return segment ? overlayMarkup(copy.secondActVideo2[segment[2]]) : "";
+  }
   return "";
 }
 function renderVideoFrame() {
   const duration = Number.isFinite(storyVideo.duration) ? storyVideo.duration : 15;
   progressFill.style.width = `${Math.min(100, storyVideo.currentTime / duration * 100)}%`;
+  if (!videoChoiceOverlay.classList.contains("is-hidden")) {
+    storyOverlay.replaceChildren();
+    videoNoteOverlay.classList.add("is-hidden");
+    return;
+  }
   const showSelectedNote = sceneNumber === 2 && hasSelectedWritingNote && storyVideo.currentTime >= WRITING_NOTE_REVEAL_START && storyVideo.currentTime < WRITING_NOTE_REVEAL_END;
   videoNoteOverlay.classList.toggle("is-hidden", !showSelectedNote);
   if (episodeMode && sceneNumber === 0) return;
   storyOverlay.innerHTML = videoOverlayAt(storyVideo.currentTime);
+}
+function renderSecondActChoices() {
+  storyVideo.pause();
+  storyOverlay.replaceChildren();
+  videoChoicePrompt.textContent = "";
+  videoChoicePrompt.hidden = true;
+  videoChoiceList.replaceChildren();
+  [copy.secondActChoiceA, copy.secondActChoiceB].forEach((label, index) => {
+    const button = document.createElement("button");
+    button.className = "video-story-choice";
+    button.type = "button";
+    const marker = document.createElement("span");
+    marker.className = "video-story-choice-marker";
+    marker.textContent = String.fromCharCode(65 + index);
+    const optionCopy = document.createElement("span");
+    optionCopy.className = "video-story-choice-copy";
+    const optionLabel = document.createElement("b");
+    optionLabel.textContent = label;
+    optionCopy.append(optionLabel);
+    button.append(marker, optionCopy);
+    button.addEventListener("click", () => {
+      choice = index === 0 ? "A" : "B";
+      videoChoiceList.querySelectorAll("button").forEach((choiceButton) => {
+        choiceButton.disabled = true;
+      });
+      button.classList.add("is-selected");
+      videoChoiceOverlay.classList.add("is-hidden");
+      skipVideo.disabled = false;
+      void playScene(SECOND_ACT_VIDEO_TWO_SCENE);
+    });
+    videoChoiceList.append(button);
+  });
+  skipVideo.disabled = true;
+  setPhase("video");
+  videoChoiceOverlay.classList.remove("is-hidden");
+  videoChoiceList.querySelector("button")?.focus();
+  syncVideoControl();
 }
 function finishScene() {
   if (writingChoiceAwaitingContinuation) return;
   storyVideo.pause();
   storyOverlay.replaceChildren();
   videoNoteOverlay.classList.add("is-hidden");
+  if (sceneNumber === SECOND_ACT_VIDEO_ONE_SCENE) {
+    renderSecondActChoices();
+    return;
+  }
+  if (sceneNumber === SECOND_ACT_VIDEO_TWO_SCENE) {
+    startSecondActGame();
+    return;
+  }
   if (episodeMode) {
     if (sceneNumber === 2) {
       selectedWritingNote = "";
@@ -1559,16 +1741,17 @@ function finishScene() {
       }
     });
   } else {
-    showLilyTransition();
+    startGame();
   }
 }
 async function playScene(number) {
-  const src = media?.[`video${number}`];
+  const src = number === SECOND_ACT_VIDEO_ONE_SCENE ? media?.secondActVideo1 : number === SECOND_ACT_VIDEO_TWO_SCENE ? media?.secondActVideo2 : media?.[`video${number}`];
   if (!src) {
     postWorldError("world_media_unavailable");
     return;
   }
   sceneNumber = number;
+  chapterLabel.textContent = number === SECOND_ACT_VIDEO_ONE_SCENE || number === SECOND_ACT_VIDEO_TWO_SCENE ? copy.secondActChapterLabel : copy.chapterLabel;
   setPhase("video");
   const poster = `/assets/worlds/banquet-contract-scene-${number}.jpg`;
   videoBackdrop.style.backgroundImage = `url("${poster}")`;
@@ -1578,6 +1761,9 @@ async function playScene(number) {
   if (!activated) {
     postWorldError("world_video_playback_failed");
     return;
+  }
+  if (number === SECOND_ACT_VIDEO_ONE_SCENE && media?.secondActVideo2) {
+    prepareStoryVideo(media.secondActVideo2);
   }
   storyVideo.muted = false;
   await playStoryVideoWithSound();
@@ -1595,8 +1781,21 @@ function banquetMatch3Config(config = {}) {
   };
 }
 function startGame() {
+  matchTitle.textContent = copy.matchTitle;
+  matchGoal.textContent = copy.matchGoal;
   activeGameId = GAME_ID;
   activeGameConfig = banquetMatch3Config();
+  setPhase("match");
+  acceptedGameResult = false;
+  gameRunId = `${WORLD_ID}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  gameLoading.classList.remove("is-hidden");
+  matchFrame.src = `/games/${activeGameId}/index.html?run=${encodeURIComponent(gameRunId)}`;
+}
+function startSecondActGame() {
+  matchTitle.textContent = copy.secondActMatchTitle;
+  matchGoal.textContent = copy.secondActMatchGoal;
+  activeGameId = GAME_ID;
+  activeGameConfig = banquetMatch3Config({ banquetLevel: "ryan-speech" });
   setPhase("match");
   acceptedGameResult = false;
   gameRunId = `${WORLD_ID}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
@@ -1610,6 +1809,8 @@ function startConfiguredGame(config) {
     return;
   }
   activeGameId = gameId;
+  matchTitle.textContent = copy.matchTitle;
+  matchGoal.textContent = copy.matchGoal;
   activeGameConfig = banquetMatch3Config(config);
   acceptedGameResult = false;
   const canReusePreparedFrame = preparedGameId === gameId && preparedGameRunId && matchFrame.getAttribute("src");
@@ -1660,7 +1861,7 @@ function connectGameHost() {
       }
       acceptedGameResult = true;
       const result = output.data;
-      if (episodeMode) {
+      if (episodeMode && !secondActActive) {
         const isFixedGameResult = activeGameConfig?.configId === "lily-cover-story";
         if (isFixedGameResult) {
           gameLoading.classList.add("is-hidden");
@@ -1683,6 +1884,36 @@ function connectGameHost() {
 matchFrame.addEventListener("load", () => {
   if (phase === "match") connectGameHost();
 });
+function resultPresentation(gradePoints) {
+  const [passThreshold, goodThreshold, perfectThreshold] = secondActActive ? [15, 25, 50] : [10, 20, 40];
+  if (gradePoints >= perfectThreshold) {
+    return { gradeKey: "perfect", title: copy.resultPerfectTitle };
+  }
+  if (gradePoints >= goodThreshold) {
+    return { gradeKey: "good", title: copy.resultGoodTitle };
+  }
+  if (gradePoints >= passThreshold) {
+    return { gradeKey: "pass", title: copy.resultPassTitle };
+  }
+  return { gradeKey: "fail", title: copy.resultFailTitle };
+}
+function syncResultFeedback(gradeKey) {
+  if (!secondActActive) {
+    resultMessage.dataset.speaker = "lily";
+    resultFeedbackAvatar.textContent = "L";
+    resultFeedbackText.textContent = copy.resultLily;
+    return;
+  }
+  const feedbackKey = {
+    perfect: "secondActFeedbackPerfect",
+    good: "secondActFeedbackGood",
+    pass: "secondActFeedbackPass",
+    fail: "secondActFeedbackFail"
+  }[gradeKey];
+  resultMessage.dataset.speaker = "ryan";
+  resultFeedbackAvatar.textContent = "R";
+  resultFeedbackText.textContent = copy[feedbackKey];
+}
 function showResult(result, { persist = true } = {}) {
   const rawPoints = Number(result?.metrics?.points);
   const rawGradePoints = Number(result?.metrics?.gradePoints);
@@ -1692,31 +1923,62 @@ function showResult(result, { persist = true } = {}) {
     Math.floor(displayedScore)
   );
   const gradePoints = Number.isFinite(rawGradePoints) ? rawGradePoints : points;
-  let gradeKey = "fail";
-  let title = copy.resultFailTitle;
-  if (gradePoints >= 40) {
-    gradeKey = "perfect";
-    title = copy.resultPerfectTitle;
-  } else if (gradePoints >= 20) {
-    gradeKey = "good";
-    title = copy.resultGoodTitle;
-  } else if (gradePoints >= 10) {
-    gradeKey = "pass";
-    title = copy.resultPassTitle;
-  }
+  const normalizedGradePoints = Math.max(0, Math.floor(gradePoints));
+  const { gradeKey, title } = resultPresentation(normalizedGradePoints);
+  latestResult = { points, gradePoints: normalizedGradePoints, secondAct: secondActActive };
   document.querySelector("#result-score").textContent = String(points);
   document.querySelector("#result-title").textContent = title;
   document.querySelector("#result-seal").dataset.grade = gradeKey;
+  resultEyebrow.textContent = secondActActive ? copy.secondActResultEyebrow : copy.resultEyebrow;
+  resultMessage.classList.remove("is-hidden");
+  syncResultFeedback(gradeKey);
   setPhase("result");
+  syncResultAction();
   if (persist) {
     publishCheckpoint(checkpointEnvelope("result", {
       points,
-      gradePoints: Math.max(0, Math.floor(gradePoints))
+      gradePoints: normalizedGradePoints,
+      secondAct: secondActActive
     }));
   }
 }
+function showHome(result = latestResult, { persist = true } = {}) {
+  const normalized = checkpointResult(result);
+  if (!normalized) return;
+  latestResult = normalized;
+  const { title } = resultPresentation(normalized.gradePoints);
+  homeCanvas.dataset.score = String(normalized.points);
+  homeCanvas.dataset.grade = title;
+  setPhase("home");
+  syncSecondActAvailability();
+  if (media?.secondActVideo1) prepareStoryVideo(media.secondActVideo1);
+  if (persist) publishCheckpoint(checkpointEnvelope("home", normalized));
+}
+function syncSecondActAvailability() {
+  if (!homeContinueStory) return;
+  const ready = Boolean(media?.secondActVideo1 && media?.secondActVideo2);
+  homeContinueStory.disabled = !ready;
+  homeContinueStory.dataset.mediaReady = String(ready);
+  if (ready) {
+    homeContinueStory.removeAttribute("title");
+    homeContinueStory.removeAttribute("aria-description");
+  } else {
+    homeContinueStory.title = copy.secondActUnavailable;
+    homeContinueStory.setAttribute("aria-description", copy.secondActUnavailable);
+  }
+}
+function continueStory() {
+  if (!media?.secondActVideo1 || !media?.secondActVideo2) {
+    syncSecondActAvailability();
+    return;
+  }
+  secondActActive = true;
+  void playScene(SECOND_ACT_VIDEO_ONE_SCENE);
+}
 function beginStory() {
   clearCheckpoint();
+  secondActActive = false;
+  resultMessage.classList.remove("is-hidden");
   if (!episodeMode) {
     void playScene(1);
     return;
@@ -1726,15 +1988,60 @@ function beginStory() {
   if (episodeQueue.length > 0) renderNextEpisodeSegment();
   else showEpisodeWaiting();
 }
+function restartStory() {
+  clearCheckpoint();
+  choice = "A";
+  secondActActive = false;
+  latestResult = null;
+  playWritingVideoAfterChoice = false;
+  storyVideos.forEach((video, index) => {
+    video.pause();
+    video.removeAttribute("src");
+    video.removeAttribute("poster");
+    video.load();
+    video.classList.toggle("is-active", index === 0);
+    video.setAttribute("aria-hidden", index === 0 ? "false" : "true");
+  });
+  storyVideo = storyVideos[0];
+  preloadConfiguredStoryVideos();
+  sceneNumber = 0;
+  gameRunId = "";
+  episodeStarted = false;
+  episodeWaiting = false;
+  episodeQueue = [];
+  activeGameId = GAME_ID;
+  activeGameConfig = null;
+  acceptedGameResult = false;
+  writingChoiceItem = null;
+  writingChoiceAwaitingContinuation = false;
+  selectedWritingNote = "";
+  hasSelectedWritingNote = false;
+  setWritingChoiceState(false);
+  delete world.dataset.episodeState;
+  videoChoiceOverlay.classList.add("is-hidden");
+  videoNoteOverlay.classList.add("is-hidden");
+  storyOverlay.replaceChildren();
+  progressFill.style.width = "0";
+  resultMessage.classList.remove("is-hidden");
+  resultEyebrow.textContent = copy.resultEyebrow;
+  resetPreparedGame();
+  if (episodeMode) postEpisodeEvent({ type: "episode.restart" });
+  setPhase("cover");
+  syncResultAction();
+}
+function handleResultAction() {
+  if (secondActActive) {
+    restartStory();
+    return;
+  }
+  showHome();
+}
 document.querySelector("#begin-story").addEventListener("click", beginStory);
 document.querySelector("#character-card-action").addEventListener("click", beginStory);
 skipVideo.addEventListener("click", finishScene);
+resultActionButton.addEventListener("click", handleResultAction);
+homeContinueStory.addEventListener("click", continueStory);
 episodeContinue.addEventListener("click", () => {
-  if (!episodeMode && world.dataset.lilyTransition === "true") {
-    setLilyTransition(false);
-    startGame();
-    return;
-  }
   renderNextEpisodeSegment();
 });
 episodeRetry.addEventListener("click", () => {
@@ -1769,42 +2076,17 @@ storyVideos.forEach((video) => {
     if (video === storyVideo) finishScene();
   });
   video.addEventListener("error", () => {
-    if (video === storyVideo) postWorldError("world_video_playback_failed");
+    if (phase === "video" && video === storyVideo) {
+      postWorldError("world_video_playback_failed");
+    }
   });
 });
-document.querySelector("#restart-story").addEventListener("click", () => {
-  clearCheckpoint();
-  choice = "A";
-  playWritingVideoAfterChoice = false;
-  if (episodeMode) {
-    storyVideos.forEach((video, index) => {
-      video.pause();
-      video.removeAttribute("src");
-      video.removeAttribute("poster");
-      video.load();
-      video.classList.toggle("is-active", index === 0);
-      video.setAttribute("aria-hidden", index === 0 ? "false" : "true");
-    });
-    storyVideo = storyVideos[0];
-    preloadConfiguredStoryVideos();
-    sceneNumber = 0;
-    episodeStarted = false;
-    episodeWaiting = false;
-    episodeQueue = [];
-    activeGameConfig = null;
-    acceptedGameResult = false;
-    writingChoiceItem = null;
-    writingChoiceAwaitingContinuation = false;
-    selectedWritingNote = "";
-    hasSelectedWritingNote = false;
-    setWritingChoiceState(false);
-    delete world.dataset.episodeState;
-    videoChoiceOverlay.classList.add("is-hidden");
-    videoNoteOverlay.classList.add("is-hidden");
-    resetPreparedGame();
-    postEpisodeEvent({ type: "episode.restart" });
-  }
-  setPhase("cover");
+document.querySelectorAll("[data-home-action]").forEach((button) => {
+  button.addEventListener("click", () => {
+    world.dispatchEvent(new CustomEvent("banquet:home-action", {
+      detail: { action: button.dataset.homeAction }
+    }));
+  });
 });
 if (window.parent !== window) {
   dokiworld.connect({
@@ -1834,7 +2116,6 @@ if (window.parent !== window) {
       } else if (message.type === "episode.error") {
         episodeWaiting = false;
         world.dataset.episodeState = "error";
-        setLilyTransition(false);
         episodeTitle.textContent = experience?.title || copy.episodeEyebrow;
         episodeContent.replaceChildren();
         const error = document.createElement("p");

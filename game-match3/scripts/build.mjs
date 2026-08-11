@@ -5,7 +5,14 @@ import { build } from "esbuild";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = resolve(root, "dist");
-const excluded = new Set(["dist", "node_modules", "scripts", "package.json", "package-lock.json"]);
+const excluded = new Set([
+  "dist",
+  "node_modules",
+  "scripts",
+  "tests",
+  "package.json",
+  "package-lock.json",
+]);
 
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });

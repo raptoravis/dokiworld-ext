@@ -147,7 +147,7 @@ function unchangedMove(state2) {
   return { state: state2, valid: false, cascades: 0, scoreGained: 0, cleared: 0, steps: [] };
 }
 
-// ../../dokiworld.git/packages/app-sdk/src/index.js
+// ../../dokiworld/packages/app-sdk/src/index.js
 var APP_PROTOCOL = "dokiworld.app";
 var APP_PROTOCOL_VERSION = 2;
 var MAX_ID_LENGTH = 200;
@@ -445,6 +445,8 @@ var BANQUET_ORDERS = [
   { kind: "performance", target: 12 }
 ];
 var BANQUET_THRESHOLDS = [10, 20, 40];
+var RYAN_SPEECH_THRESHOLDS = [15, 25, 50];
+var BANQUET_BOOSTERS = ["single", "row", "column", "kind", "shuffle"];
 var PARTICLE_COLORS = {
   performance: "#ffad3d",
   intelligence: "#42d1ff",
@@ -464,12 +466,22 @@ var COPY = {
     time: "{value} seconds left",
     board: "Match-three game board",
     cascade: "Sweet Cascade",
-    goalLabel: "Goal",
+    goalLabel: "Goal:",
     goal: "Convince your best friend nothing happened last night.",
+    ryanSpeechGoal: "Complete the \u201Cperfect\u201D speech Ryan will use tonight.",
     orders: "Collected",
     boosters: "Boosters",
+    boosterToolbar: "Locked match-three boosters",
+    boosterLocked: {
+      single: "Noir Drop is locked in this level.",
+      row: "Velvet Sweep is locked in this level.",
+      column: "Midnight Pour is locked in this level.",
+      kind: "Essence Recall is locked in this level.",
+      shuffle: "Banquet Remix is locked in this level."
+    },
     restart: "Restart",
     instructionLong: "Match any 3 or more identical items. Score as high as you can in 10 moves\u2014no special pattern is required.",
+    ryanSpeechInstructionLong: "Complete Ryan\u2019s \u201Cperfect\u201D speech in 10 moves and score as high as possible.",
     standardClear: "Pass",
     greatClear: "Good",
     perfectClear: "Perfect",
@@ -487,12 +499,22 @@ var COPY = {
     time: "\u5269\u4F59 {value} \u79D2",
     board: "\u4E09\u6D88\u6E38\u620F\u68CB\u76D8",
     cascade: "\u751C\u871C\u8FDE\u51FB",
-    goalLabel: "\u76EE\u6807",
+    goalLabel: "\u76EE\u6807\uFF1A",
     goal: "\u8BA9\u4F60\u6700\u597D\u7684\u670B\u53CB\u76F8\u4FE1\u6628\u665A\u4EC0\u4E48\u90FD\u6CA1\u53D1\u751F\u3002",
+    ryanSpeechGoal: "\u5B8C\u6210Ryan\u4ECA\u665A\u4F7F\u7528\u7684\u201C\u5B8C\u7F8E\u201D\u6F14\u8BB2\u7A3F\u3002",
     orders: "\u5DF2\u6536\u96C6",
     boosters: "\u9053\u5177",
+    boosterToolbar: "\u5C1A\u672A\u89E3\u9501\u7684\u4E09\u6D88\u9053\u5177",
+    boosterLocked: {
+      single: "\u9ED1\u66DC\u70B9\u7834\u5728\u672C\u5173\u5C1A\u672A\u89E3\u9501\u3002",
+      row: "\u4E1D\u7ED2\u6A2A\u626B\u5728\u672C\u5173\u5C1A\u672A\u89E3\u9501\u3002",
+      column: "\u5348\u591C\u7EB5\u6D41\u5728\u672C\u5173\u5C1A\u672A\u89E3\u9501\u3002",
+      kind: "\u9999\u8C03\u53EC\u56DE\u5728\u672C\u5173\u5C1A\u672A\u89E3\u9501\u3002",
+      shuffle: "\u5BB4\u4F1A\u91CD\u8C03\u5728\u672C\u5173\u5C1A\u672A\u89E3\u9501\u3002"
+    },
     restart: "\u91CD\u65B0\u5F00\u59CB",
     instructionLong: "\u4EFB\u610F\u8FDE\u6210\u4E09\u4E2A\u6216\u66F4\u591A\u76F8\u540C\u7269\u54C1\u5373\u53EF\u5F97\u5206\u3002\u9650\u5B9A 10 \u6B65\uFF0C\u4E0D\u8981\u6C42\u7279\u6B8A\u6D88\u9664\u56FE\u6848\uFF0C\u5C3D\u53EF\u80FD\u83B7\u5F97\u9AD8\u5206\u3002",
+    ryanSpeechInstructionLong: "\u9650\u5B9A10\u6B65\uFF0C\u5B8C\u6210Ryan\u4ECA\u665A\u4F7F\u7528\u7684\u201C\u5B8C\u7F8E\u201D\u6F14\u8BB2\u7A3F\uFF0C\u770B\u6700\u9AD8\u83B7\u5F97\u591A\u5C11\u5206\u3002",
     standardClear: "\u5408\u683C",
     greatClear: "\u826F\u597D",
     perfectClear: "Perfect",
@@ -524,6 +546,7 @@ var elements = {
   banquetOrdersTitle: document.querySelector("#banquet-orders-title"),
   banquetOrderList: document.querySelector("#banquet-order-list"),
   banquetBoostersTitle: document.querySelector("#banquet-boosters-title"),
+  banquetBoosterList: document.querySelector("#banquet-booster-list"),
   banquetScoreLabel: document.querySelector("#banquet-score-label"),
   banquetScore: document.querySelector("#banquet-score"),
   banquetScoreFill: document.querySelector("#banquet-score-fill"),
@@ -569,7 +592,8 @@ function configure(options = {}) {
     targetScore: clamp(options.targetScore, 600, 100, 1e4),
     moves: Number.isFinite(Number(options.moves)) ? clamp(options.moves, 12, 1, 60) : null,
     seed: Number.isFinite(Number(options.seed)) ? Number(options.seed) : null,
-    presentation: options.presentation === "banquet-contract" ? "banquet-contract" : "default"
+    presentation: options.presentation === "banquet-contract" ? "banquet-contract" : "default",
+    banquetLevel: options.banquetLevel === "ryan-speech" ? "ryan-speech" : "lily-cover-story"
   };
   random = config.seed === null ? Math.random : createSeededRandom(config.seed);
 }
@@ -595,6 +619,9 @@ function normalizedScore(score) {
 function banquetPoints(score) {
   return Math.max(0, Math.floor(score / 10));
 }
+function banquetThresholds() {
+  return config.banquetLevel === "ryan-speech" ? RYAN_SPEECH_THRESHOLDS : BANQUET_THRESHOLDS;
+}
 function renderOrders() {
   elements.banquetOrderList.replaceChildren(...BANQUET_ORDERS.map(({ kind, target }) => {
     const current = Math.min(target, orderProgress.get(kind) ?? 0);
@@ -609,19 +636,36 @@ function renderOrders() {
     return order;
   }));
 }
+function renderLockedBoosters() {
+  elements.banquetBoosterList.setAttribute("aria-label", copy.boosterToolbar);
+  elements.banquetBoosterList.replaceChildren(...BANQUET_BOOSTERS.map((booster) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "match3-booster is-locked";
+    button.dataset.booster = booster;
+    button.disabled = true;
+    button.setAttribute("aria-label", copy.boosterLocked[booster]);
+    const image = document.createElement("img");
+    image.src = "./banquet-booster-locked.png";
+    image.alt = "";
+    button.append(image);
+    return button;
+  }));
+}
 function renderBanquetHud(score) {
   const movesLeft = config.moves === null ? 0 : Math.max(0, config.moves - state.movesUsed);
   const points = banquetPoints(score);
+  const thresholds = banquetThresholds();
   elements.banquetMoves.textContent = formatNumber(movesLeft);
   elements.banquetScore.textContent = formatNumber(points);
-  elements.banquetScore.classList.toggle("is-qualified", points >= BANQUET_THRESHOLDS[0]);
-  elements.banquetScoreFill.style.height = `${Math.min(100, points / BANQUET_THRESHOLDS[BANQUET_THRESHOLDS.length - 1] * 100)}%`;
+  elements.banquetScore.classList.toggle("is-qualified", points >= thresholds[0]);
+  elements.banquetScoreFill.style.height = `${Math.min(100, points / thresholds[thresholds.length - 1] * 100)}%`;
   document.querySelectorAll(".match3-score-ladder li").forEach((tier) => {
     const threshold = Number(tier.dataset.threshold);
     tier.classList.toggle("is-reached", points >= threshold);
     tier.classList.toggle(
       "is-current",
-      points >= threshold && !BANQUET_THRESHOLDS.some((candidate) => candidate > threshold && points >= candidate)
+      points >= threshold && !thresholds.some((candidate) => candidate > threshold && points >= candidate)
     );
   });
   renderOrders();
@@ -1018,18 +1062,26 @@ async function finish() {
   });
 }
 function applyStaticCopy() {
+  const isRyanSpeech = config.banquetLevel === "ryan-speech";
+  const thresholds = banquetThresholds();
   elements.title.textContent = copy.title;
   elements.instructions.textContent = copy.instructions;
   elements.banquetGoalLabel.textContent = copy.goalLabel;
-  elements.banquetGoal.textContent = copy.goal;
+  elements.banquetGoal.textContent = isRyanSpeech ? copy.ryanSpeechGoal : copy.goal;
   elements.banquetMovesLabel.textContent = copy.movesLabel;
   elements.banquetOrdersTitle.textContent = copy.orders;
   elements.banquetBoostersTitle.textContent = copy.boosters;
+  renderLockedBoosters();
   elements.banquetScoreLabel.textContent = copy.scoreLabel;
   elements.banquetStandardClear.textContent = copy.standardClear;
   elements.banquetGreatClear.textContent = copy.greatClear;
   elements.banquetPerfectClear.textContent = copy.perfectClear;
-  elements.banquetInstructions.textContent = copy.instructionLong;
+  elements.banquetInstructions.textContent = isRyanSpeech ? copy.ryanSpeechInstructionLong : copy.instructionLong;
+  document.querySelectorAll(".match3-score-ladder li").forEach((tier, index) => {
+    const threshold = thresholds[index];
+    tier.dataset.threshold = String(threshold);
+    tier.querySelector("strong").textContent = String(threshold);
+  });
   elements.restart.setAttribute("aria-label", copy.restart);
 }
 function start() {

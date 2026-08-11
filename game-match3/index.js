@@ -23,6 +23,8 @@ const BANQUET_ORDERS = [
   { kind: "performance", target: 12 },
 ];
 const BANQUET_THRESHOLDS = [10, 20, 40];
+const RYAN_SPEECH_THRESHOLDS = [15, 25, 50];
+const BANQUET_BOOSTERS = ["single", "row", "column", "kind", "shuffle"];
 const PARTICLE_COLORS = {
   performance: "#ffad3d",
   intelligence: "#42d1ff",
@@ -42,12 +44,22 @@ const COPY = {
     time: "{value} seconds left",
     board: "Match-three game board",
     cascade: "Sweet Cascade",
-    goalLabel: "Goal",
+    goalLabel: "Goal:",
     goal: "Convince your best friend nothing happened last night.",
+    ryanSpeechGoal: "Complete the “perfect” speech Ryan will use tonight.",
     orders: "Collected",
     boosters: "Boosters",
+    boosterToolbar: "Locked match-three boosters",
+    boosterLocked: {
+      single: "Noir Drop is locked in this level.",
+      row: "Velvet Sweep is locked in this level.",
+      column: "Midnight Pour is locked in this level.",
+      kind: "Essence Recall is locked in this level.",
+      shuffle: "Banquet Remix is locked in this level.",
+    },
     restart: "Restart",
     instructionLong: "Match any 3 or more identical items. Score as high as you can in 10 moves—no special pattern is required.",
+    ryanSpeechInstructionLong: "Complete Ryan’s “perfect” speech in 10 moves and score as high as possible.",
     standardClear: "Pass",
     greatClear: "Good",
     perfectClear: "Perfect",
@@ -65,12 +77,22 @@ const COPY = {
     time: "剩余 {value} 秒",
     board: "三消游戏棋盘",
     cascade: "甜蜜连击",
-    goalLabel: "目标",
+    goalLabel: "目标：",
     goal: "让你最好的朋友相信昨晚什么都没发生。",
+    ryanSpeechGoal: "完成Ryan今晚使用的“完美”演讲稿。",
     orders: "已收集",
     boosters: "道具",
+    boosterToolbar: "尚未解锁的三消道具",
+    boosterLocked: {
+      single: "黑曜点破在本关尚未解锁。",
+      row: "丝绒横扫在本关尚未解锁。",
+      column: "午夜纵流在本关尚未解锁。",
+      kind: "香调召回在本关尚未解锁。",
+      shuffle: "宴会重调在本关尚未解锁。",
+    },
     restart: "重新开始",
     instructionLong: "任意连成三个或更多相同物品即可得分。限定 10 步，不要求特殊消除图案，尽可能获得高分。",
+    ryanSpeechInstructionLong: "限定10步，完成Ryan今晚使用的“完美”演讲稿，看最高获得多少分。",
     standardClear: "合格",
     greatClear: "良好",
     perfectClear: "Perfect",
@@ -89,7 +111,8 @@ const elements = {
   banquetGoalLabel: document.querySelector("#banquet-goal-label"), banquetGoal: document.querySelector("#banquet-goal"),
   banquetMovesLabel: document.querySelector("#banquet-moves-label"), banquetMoves: document.querySelector("#banquet-moves"),
   banquetOrdersTitle: document.querySelector("#banquet-orders-title"), banquetOrderList: document.querySelector("#banquet-order-list"),
-  banquetBoostersTitle: document.querySelector("#banquet-boosters-title"), banquetScoreLabel: document.querySelector("#banquet-score-label"),
+  banquetBoostersTitle: document.querySelector("#banquet-boosters-title"), banquetBoosterList: document.querySelector("#banquet-booster-list"),
+  banquetScoreLabel: document.querySelector("#banquet-score-label"),
   banquetScore: document.querySelector("#banquet-score"), banquetScoreFill: document.querySelector("#banquet-score-fill"),
   banquetStandardClear: document.querySelector("#banquet-standard-clear"), banquetGreatClear: document.querySelector("#banquet-great-clear"),
   banquetPerfectClear: document.querySelector("#banquet-perfect-clear"), banquetInstructions: document.querySelector("#banquet-instructions"),
@@ -134,6 +157,7 @@ function configure(options = {}) {
     moves: Number.isFinite(Number(options.moves)) ? clamp(options.moves, 12, 1, 60) : null,
     seed: Number.isFinite(Number(options.seed)) ? Number(options.seed) : null,
     presentation: options.presentation === "banquet-contract" ? "banquet-contract" : "default",
+    banquetLevel: options.banquetLevel === "ryan-speech" ? "ryan-speech" : "lily-cover-story",
   };
   random = config.seed === null ? Math.random : createSeededRandom(config.seed);
 }
@@ -161,6 +185,12 @@ function banquetPoints(score) {
   return Math.max(0, Math.floor(score / 10));
 }
 
+function banquetThresholds() {
+  return config.banquetLevel === "ryan-speech"
+    ? RYAN_SPEECH_THRESHOLDS
+    : BANQUET_THRESHOLDS;
+}
+
 function renderOrders() {
   elements.banquetOrderList.replaceChildren(...BANQUET_ORDERS.map(({ kind, target }) => {
     const current = Math.min(target, orderProgress.get(kind) ?? 0);
@@ -176,20 +206,38 @@ function renderOrders() {
   }));
 }
 
+function renderLockedBoosters() {
+  elements.banquetBoosterList.setAttribute("aria-label", copy.boosterToolbar);
+  elements.banquetBoosterList.replaceChildren(...BANQUET_BOOSTERS.map((booster) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "match3-booster is-locked";
+    button.dataset.booster = booster;
+    button.disabled = true;
+    button.setAttribute("aria-label", copy.boosterLocked[booster]);
+    const image = document.createElement("img");
+    image.src = "./banquet-booster-locked.png";
+    image.alt = "";
+    button.append(image);
+    return button;
+  }));
+}
+
 function renderBanquetHud(score) {
   const movesLeft = config.moves === null ? 0 : Math.max(0, config.moves - state.movesUsed);
   const points = banquetPoints(score);
+  const thresholds = banquetThresholds();
   elements.banquetMoves.textContent = formatNumber(movesLeft);
   elements.banquetScore.textContent = formatNumber(points);
-  elements.banquetScore.classList.toggle("is-qualified", points >= BANQUET_THRESHOLDS[0]);
+  elements.banquetScore.classList.toggle("is-qualified", points >= thresholds[0]);
   elements.banquetScoreFill.style.height =
-    `${Math.min(100, (points / BANQUET_THRESHOLDS[BANQUET_THRESHOLDS.length - 1]) * 100)}%`;
+    `${Math.min(100, (points / thresholds[thresholds.length - 1]) * 100)}%`;
   document.querySelectorAll(".match3-score-ladder li").forEach((tier) => {
     const threshold = Number(tier.dataset.threshold);
     tier.classList.toggle("is-reached", points >= threshold);
     tier.classList.toggle(
       "is-current",
-      points >= threshold && !BANQUET_THRESHOLDS.some((candidate) => candidate > threshold && points >= candidate),
+      points >= threshold && !thresholds.some((candidate) => candidate > threshold && points >= candidate),
     );
   });
   renderOrders();
@@ -593,18 +641,28 @@ async function finish() {
 }
 
 function applyStaticCopy() {
+  const isRyanSpeech = config.banquetLevel === "ryan-speech";
+  const thresholds = banquetThresholds();
   elements.title.textContent = copy.title;
   elements.instructions.textContent = copy.instructions;
   elements.banquetGoalLabel.textContent = copy.goalLabel;
-  elements.banquetGoal.textContent = copy.goal;
+  elements.banquetGoal.textContent = isRyanSpeech ? copy.ryanSpeechGoal : copy.goal;
   elements.banquetMovesLabel.textContent = copy.movesLabel;
   elements.banquetOrdersTitle.textContent = copy.orders;
   elements.banquetBoostersTitle.textContent = copy.boosters;
+  renderLockedBoosters();
   elements.banquetScoreLabel.textContent = copy.scoreLabel;
   elements.banquetStandardClear.textContent = copy.standardClear;
   elements.banquetGreatClear.textContent = copy.greatClear;
   elements.banquetPerfectClear.textContent = copy.perfectClear;
-  elements.banquetInstructions.textContent = copy.instructionLong;
+  elements.banquetInstructions.textContent = isRyanSpeech
+    ? copy.ryanSpeechInstructionLong
+    : copy.instructionLong;
+  document.querySelectorAll(".match3-score-ladder li").forEach((tier, index) => {
+    const threshold = thresholds[index];
+    tier.dataset.threshold = String(threshold);
+    tier.querySelector("strong").textContent = String(threshold);
+  });
   elements.restart.setAttribute("aria-label", copy.restart);
 }
 

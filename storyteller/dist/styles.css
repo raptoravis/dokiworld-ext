@@ -669,8 +669,9 @@ button { color: inherit; }
 
 .lines {
   width: 100%;
-  max-width: 1120px;
+  max-width: none;
   min-height: auto;
+  margin: 0;
   align-content: start;
   gap: clamp(24px, 2vw, 32px);
 }
@@ -681,7 +682,7 @@ button { color: inherit; }
 }
 
 .message-group.is-ai {
-  width: min(100%, clamp(680px, 76cqw, 1080px));
+  width: 100%;
   grid-template-columns: 46px minmax(0, 1fr);
   align-items: start;
   gap: 14px;
