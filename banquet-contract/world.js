@@ -1277,13 +1277,7 @@ function connectGameHost() {
       acceptedGameResult = true;
       const result = output.data;
       if (episodeMode) {
-        const isFixedGameResult = activeGameConfig?.configId === "lily-cover-story";
-        if (isFixedGameResult) {
-          gameLoading.classList.add("is-hidden");
-          showResult(result);
-        } else {
-          gameLoading.classList.remove("is-hidden");
-        }
+        showResult(result, { persist: false });
         postEpisodeEvent({
           type: "episode.gameResult",
           result,

@@ -7,4 +7,9 @@ test("Banquet Contract routes episode traffic through the typed SDK extension", 
   assert.match(source, /createEpisodeClientExtension/);
   assert.doesNotMatch(source, /dokiworld-app-episode/);
   assert.match(source, /message\.type === "episode\.gameResolved"/);
+  assert.match(
+    source,
+    /if \(episodeMode\) \{\s+showResult\(result, \{ persist: false \}\);\s+postEpisodeEvent\(\{/,
+    "the configured app must leave the nested game before waiting for episode resolution",
+  );
 });
