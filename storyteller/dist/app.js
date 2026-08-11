@@ -1,6 +1,7 @@
 // ../../dokiworld.git/packages/app-sdk/src/index.js
 var APP_PROTOCOL = "dokiworld.app";
 var APP_PROTOCOL_VERSION = 2;
+var LEGACY_PROTOCOL_VERSION = 1;
 var MAX_ID_LENGTH = 200;
 var MAX_RESULT_BYTES = 64 * 1024;
 var MAX_RESULT_DEPTH = 12;
@@ -90,6 +91,23 @@ function isBoundedJson(value) {
     return Object.entries(current).every(([key, item]) => key.length <= MAX_ID_LENGTH && visit(item, depth + 1));
   };
   return visit(value, 0);
+}
+function legacyNames(kind) {
+  const prefix = kind === "game" ? "dokiworld-game" : "dokiworld-world";
+  return { prefix, idKey: kind === "game" ? "gameId" : "worldId" };
+}
+function createLegacyGameInitMessage({ gameId, runId, ...payload }) {
+  if (!isBoundedId(gameId) || !isBoundedId(runId)) throw new Error("Invalid legacy game init identity");
+  return { ...payload, type: "dokiworld-game-init", protocolVersion: LEGACY_PROTOCOL_VERSION, gameId, runId };
+}
+function parseLegacyAppMessage(value, { kind, appId, runId }) {
+  if (!isRecord(value)) return null;
+  if (kind !== "game" && kind !== "world") return null;
+  const { prefix, idKey } = legacyNames(kind);
+  if (typeof value.type !== "string" || !value.type.startsWith(`${prefix}-`)) return null;
+  if (value.protocolVersion !== LEGACY_PROTOCOL_VERSION || value[idKey] !== appId) return null;
+  if (value.type !== `${prefix}-ready` && value.runId !== runId) return null;
+  return value;
 }
 function parseExternalAppReadyMessage(value, expectedAppId) {
   if (!isRecord(value) || "runId" in value || "messageId" in value) return null;
@@ -1379,7 +1397,7 @@ function renderChoices(item) {
   window.setTimeout(() => elements.choices.querySelector("button")?.focus(), 80);
 }
 async function findConfiguredApp(gameId) {
-  const app = appCatalog.find((entry) => isRecord3(entry) && entry.id === gameId && entry.status !== "disabled" && entry.protocolVersion === 2);
+  const app = appCatalog.find((entry) => isRecord3(entry) && entry.id === gameId && entry.status !== "disabled" && (entry.protocolVersion === 1 || entry.protocolVersion === 2));
   if (!app || !safeUrl(app.entryUrl)) throw new Error("app unavailable");
   return app;
 }
@@ -1538,12 +1556,70 @@ function preserveCompletedImage(item) {
   group.append(content);
   elements.lines.append(group);
 }
+function settleActiveGameResult(current, result) {
+  if (localActionBeat) {
+    window.queueMicrotask(() => completeLocalConfiguredApp(result));
+    return;
+  }
+  const config = current.config;
+  hostedResultPending = true;
+  post({
+    type: "episode.gameResult",
+    configId: current.config.configId,
+    result
+  });
+  closeConfiguredApp(false);
+  renderGameResult(result, null, config);
+}
+function initializeLegacyActiveGame(current, target, context, grantedScopes) {
+  const sendInit = () => target.postMessage(createLegacyGameInitMessage({
+    gameId: current.app.id,
+    runId: current.runId,
+    locale,
+    grantedScopes,
+    context
+  }), "*");
+  const handleMessage = (event) => {
+    if (event.source !== target) return;
+    const message = parseLegacyAppMessage(event.data, {
+      kind: "game",
+      appId: current.app.id,
+      runId: current.runId
+    });
+    if (!message) return;
+    if (message.type === "dokiworld-game-ready") {
+      sendInit();
+      return;
+    }
+    if (message.type === "dokiworld-game-initialized") {
+      elements.appLoading.classList.add("is-hidden");
+      return;
+    }
+    if (message.type === "dokiworld-game-close") {
+      if (localActionBeat) completeLocalConfiguredApp();
+      else closeConfiguredApp(true);
+      return;
+    }
+    if (message.type === "dokiworld-game-result" && isRecord3(message.result)) {
+      settleActiveGameResult(current, message.result);
+    }
+  };
+  window.addEventListener("message", handleMessage);
+  current.host = {
+    dispose: () => window.removeEventListener("message", handleMessage)
+  };
+  sendInit();
+}
 function initializeActiveGame() {
   if (!activeApp || activeApp.host) return;
   const { context, grantedScopes } = createGameContext();
   const target = elements.appFrame.contentWindow;
   if (!target) return;
   const current = activeApp;
+  if (current.app.protocolVersion === 1) {
+    initializeLegacyActiveGame(current, target, context, grantedScopes);
+    return;
+  }
   const runtime = isRecord3(current.app.runtime) ? current.app.runtime : {};
   current.host = createAppHost({
     appId: current.app.id,
@@ -1571,21 +1647,7 @@ function initializeActiveGame() {
     },
     onComplete: async (output) => {
       if (!isRecord3(output.data)) return { status: "rejected", reason: "invalid_result" };
-      if (localActionBeat) {
-        const result = output.data;
-        window.queueMicrotask(() => completeLocalConfiguredApp(result));
-      } else {
-        const result = output.data;
-        const config = current.config;
-        hostedResultPending = true;
-        post({
-          type: "episode.gameResult",
-          configId: current.config.configId,
-          result
-        });
-        closeConfiguredApp(false);
-        renderGameResult(result, null, config);
-      }
+      settleActiveGameResult(current, output.data);
       return { status: "accepted" };
     }
   });

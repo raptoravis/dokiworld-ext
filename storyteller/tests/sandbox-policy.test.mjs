@@ -21,6 +21,14 @@ test("opaque Storyteller sandbox receives the App catalog from its host", async 
   assert.match(source, /targetOrigin: "\*"/);
 });
 
+test("configured legacy Apps retain their v1 launch and result bridge", async () => {
+  const source = await readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(source, /entry\.protocolVersion === 1/);
+  assert.match(source, /createLegacyGameInitMessage/);
+  assert.match(source, /parseLegacyAppMessage/);
+  assert.match(source, /message\.type === "dokiworld-game-result"/);
+});
+
 test("Storyteller business code uses the typed SDK extension instead of wire messages", async () => {
   const source = await readFile(new URL("../src/app.js", import.meta.url), "utf8");
   assert.match(source, /createEpisodeClientExtension/);
