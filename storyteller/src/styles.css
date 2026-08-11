@@ -710,7 +710,7 @@ button { color: inherit; }
   text-transform: none;
 }
 
-.message-heading { display: flex; min-height: 28px; align-items: center; gap: 7px; margin-bottom: 6px; }
+.message-heading { display: flex; min-height: 28px; align-items: center; gap: 7px; margin-bottom: 8px; }
 .message-heading .speaker { margin: 0; }
 .message-play { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; padding: 0 0 0 2px; color: rgba(255,255,255,.8); background: rgba(255,255,255,.05); font-size: 11px; cursor: pointer; }
 .message-play:hover { border-color: rgba(233,195,110,.44); color: var(--speaker); }
@@ -870,6 +870,12 @@ button { color: inherit; }
 .jump-latest { position: sticky; z-index: 7; right: 12px; bottom: 4px; float: right; display: inline-flex; min-height: 34px; align-items: center; gap: 7px; border: 1px solid rgba(233,195,110,.28); border-radius: 999px; padding: 7px 12px; color: #f2cc8a; background: rgba(28,18,25,.9); box-shadow: 0 10px 24px rgba(0,0,0,.3); cursor: pointer; }
 
 .generated-media-bubble { width: fit-content; max-width: min(100%, 680px); padding: 0; overflow: hidden; }
+.generated-media-bubble .message-heading,
+.completed-image-bubble .message-heading,
+.completed-video-bubble .message-heading {
+  margin: 0;
+  padding: 11px 13px 9px;
+}
 .generated-chat-media { display: block; width: min(100%, 680px); max-height: 540px; border: 0; object-fit: contain; background: #08090d; }
 
 .completed-image-bubble {

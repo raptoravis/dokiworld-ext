@@ -1173,7 +1173,8 @@ function renderDialogue(first) {
       speak(text, true);
     });
     heading.append(speaker, play);
-    content.append(heading, bubble);
+    bubble.prepend(heading);
+    content.append(bubble);
     if (groupIndex === groups.length - 1 && !entry.items.some(({ segment }) => segment.localAuthored === true)) {
       const actions = document.createElement("div");
       actions.className = "message-actions";
@@ -1296,7 +1297,8 @@ function appendCompletedVideo(item) {
     label.textContent = caption;
     bubble.append(label);
   }
-  content.append(heading, bubble);
+  bubble.prepend(heading);
+  content.append(bubble);
   group.append(content);
   elements.lines.append(group);
 }
@@ -1350,7 +1352,8 @@ function appendGeneratedMedia(type, url) {
     media.playsInline = true;
   } else media.alt = "";
   bubble.append(media);
-  content.append(heading, bubble);
+  bubble.prepend(heading);
+  content.append(bubble);
   group.append(content);
   elements.lines.append(group);
   elements.dialogueView.scrollTo({ top: elements.dialogueView.scrollHeight, behavior: "smooth" });
@@ -1552,7 +1555,8 @@ function preserveCompletedImage(item) {
     label.textContent = caption;
     bubble.append(label);
   }
-  content.append(heading, bubble);
+  bubble.prepend(heading);
+  content.append(bubble);
   group.append(content);
   elements.lines.append(group);
 }

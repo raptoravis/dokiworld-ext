@@ -34,3 +34,11 @@ test("Storyteller business code uses the typed SDK extension instead of wire mes
   assert.match(source, /createEpisodeClientExtension/);
   assert.doesNotMatch(source, /dokiworld-app-(?:episode|chat)/);
 });
+
+test("assistant identity is rendered inside every Storyteller message bubble", async () => {
+  const source = await readFile(new URL("../src/app.js", import.meta.url), "utf8");
+
+  assert.equal(source.match(/bubble\.prepend\(heading\);/g)?.length, 4);
+  assert.equal(source.match(/content\.append\(bubble\);/g)?.length, 4);
+  assert.doesNotMatch(source, /content\.append\(heading, bubble\)/);
+});
