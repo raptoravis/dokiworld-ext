@@ -160,7 +160,7 @@ button {
 .cover-backdrop {
   background:
     radial-gradient(circle at 22% 42%, rgba(173, 113, 64, 0.24), transparent 28%),
-    url("/assets/worlds/banquet-contract-cover.png") center 24% / cover no-repeat;
+    url("./ui/cover.png") center 24% / cover no-repeat;
   filter: saturate(0.72) brightness(0.56);
   transform: scale(1.03);
   animation: cover-drift 14s ease-in-out infinite alternate;
@@ -499,7 +499,7 @@ button {
 .episode-backdrop {
   background:
     linear-gradient(115deg, rgba(13, 8, 12, 0.9), rgba(13, 8, 12, 0.56)),
-    url("/assets/worlds/banquet-contract-cover.png") center / cover no-repeat;
+    url("./ui/cover.png") center / cover no-repeat;
   filter: saturate(0.68);
   transform: scale(1.03);
 }
@@ -716,7 +716,7 @@ button {
 .result-backdrop {
   background:
     linear-gradient(rgba(7, 5, 8, 0.72), rgba(7, 5, 8, 0.92)),
-    url("/assets/worlds/banquet-contract-scene-2.jpg") center / cover no-repeat;
+    url("./ui/scene-2.jpg") center / cover no-repeat;
   filter: saturate(0.65);
 }
 
@@ -1200,7 +1200,7 @@ button {
 .world[data-mode="episode"] .episode-backdrop {
   background:
     linear-gradient(115deg, rgba(11, 7, 10, 0.68), rgba(11, 7, 10, 0.38)),
-    url("/assets/worlds/banquet-contract-scene-1.jpg") center / cover no-repeat;
+    url("./ui/scene-1.jpg") center / cover no-repeat;
   filter: saturate(0.74) brightness(0.62);
 }
 
