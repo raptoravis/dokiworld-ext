@@ -823,6 +823,7 @@ var beatsById = /* @__PURE__ */ new Map();
 var assetsById = /* @__PURE__ */ new Map();
 var linkedBeatIds = /* @__PURE__ */ new Set();
 var localActionBeat = null;
+var hostedResultPending = false;
 var playerPersona = null;
 var activeVideo = null;
 var activeImage = null;
@@ -1354,6 +1355,7 @@ async function openConfiguredApp(config) {
     return;
   }
   try {
+    hostedResultPending = false;
     elements.shell.dataset.phase = "app";
     const app = await findConfiguredApp(gameId);
     const runId = `${dokiworld.runId}:${Date.now().toString(36)}`;
@@ -1525,12 +1527,16 @@ function initializeActiveGame() {
         const result = output.data;
         window.queueMicrotask(() => completeLocalConfiguredApp(result));
       } else {
+        const result = output.data;
+        const config = current.config;
+        hostedResultPending = true;
         post({
           type: "episode.gameResult",
           configId: current.config.configId,
-          result: output.data
+          result
         });
-        elements.appLoading.classList.remove("is-hidden");
+        closeConfiguredApp(false);
+        renderGameResult(result, null, config);
       }
       return { status: "accepted" };
     }
@@ -1558,6 +1564,12 @@ function completeLocalConfiguredApp(result = null) {
   else showEnd();
 }
 function completeHostedConfiguredApp(result, utterances = null) {
+  if (hostedResultPending) {
+    hostedResultPending = false;
+    if (Array.isArray(utterances)) acceptEpisode(utterances);
+    else showDialogueHistory();
+    return;
+  }
   const config = activeApp?.config || pendingAction?.gameConfig || {};
   const continueWithNarrative = Array.isArray(utterances) ? () => acceptEpisode(utterances) : null;
   closeConfiguredApp(false);
@@ -1620,6 +1632,7 @@ function acceptEpisode(utterances) {
   activeApp = null;
   pendingAction = null;
   localActionBeat = null;
+  hostedResultPending = false;
   activeVideo = null;
   activeImage = null;
   replayingImage = false;
@@ -1636,6 +1649,7 @@ function restartEpisode() {
   presentedSegments = 0;
   pendingAction = null;
   localActionBeat = null;
+  hostedResultPending = false;
   activeVideo = null;
   activeImage = null;
   replayingImage = false;

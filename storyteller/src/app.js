@@ -240,6 +240,7 @@ let beatsById = new Map();
 let assetsById = new Map();
 let linkedBeatIds = new Set();
 let localActionBeat = null;
+let hostedResultPending = false;
 let playerPersona = null;
 let activeVideo = null;
 let activeImage = null;
@@ -833,6 +834,7 @@ async function openConfiguredApp(config) {
     return;
   }
   try {
+    hostedResultPending = false;
     elements.shell.dataset.phase = "app";
     const app = await findConfiguredApp(gameId);
     const runId = `${dokiworld.runId}:${Date.now().toString(36)}`;
@@ -1019,12 +1021,16 @@ function initializeActiveGame() {
         const result = output.data;
         window.queueMicrotask(() => completeLocalConfiguredApp(result));
       } else {
+        const result = output.data;
+        const config = current.config;
+        hostedResultPending = true;
         post({
           type: "episode.gameResult",
           configId: current.config.configId,
-          result: output.data,
+          result,
         });
-        elements.appLoading.classList.remove("is-hidden");
+        closeConfiguredApp(false);
+        renderGameResult(result, null, config);
       }
       return { status: "accepted" };
     },
@@ -1055,6 +1061,12 @@ function completeLocalConfiguredApp(result = null) {
 }
 
 function completeHostedConfiguredApp(result, utterances = null) {
+  if (hostedResultPending) {
+    hostedResultPending = false;
+    if (Array.isArray(utterances)) acceptEpisode(utterances);
+    else showDialogueHistory();
+    return;
+  }
   const config = activeApp?.config || pendingAction?.gameConfig || {};
   const continueWithNarrative = Array.isArray(utterances)
     ? () => acceptEpisode(utterances)
@@ -1126,6 +1138,7 @@ function acceptEpisode(utterances) {
   activeApp = null;
   pendingAction = null;
   localActionBeat = null;
+  hostedResultPending = false;
   activeVideo = null;
   activeImage = null;
   replayingImage = false;
@@ -1143,6 +1156,7 @@ function restartEpisode() {
   presentedSegments = 0;
   pendingAction = null;
   localActionBeat = null;
+  hostedResultPending = false;
   activeVideo = null;
   activeImage = null;
   replayingImage = false;
