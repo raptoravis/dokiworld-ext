@@ -42,3 +42,21 @@ test("assistant identity is rendered inside every Storyteller message bubble", a
   assert.equal(source.match(/content\.append\(bubble\);/g)?.length, 4);
   assert.doesNotMatch(source, /content\.append\(heading, bubble\)/);
 });
+
+test("Storyteller conversation uses the full left-aligned transcript width", async () => {
+  const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
+
+  assert.match(styles, /\.lines\s*\{\s*width:\s*100%;\s*max-width:\s*none;[\s\S]*?margin:\s*0;/);
+  assert.match(styles, /\.message-group\.is-ai\s*\{\s*width:\s*100%;/);
+  assert.match(styles, /\.opening-tagline\s*\{[\s\S]*?margin:\s*0 0 clamp\(24px,\s*2vw,\s*32px\);/);
+});
+
+test("Storyteller header spans the panel while its tools avoid the host exit control", async () => {
+  const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
+
+  assert.match(styles, /\.topbar\s*\{[\s\S]*?margin-right:\s*0;/);
+  assert.match(
+    styles,
+    /\.topbar\s*\{[\s\S]*?padding:\s*9px calc\(14px \+ var\(--host-exit-safe,\s*0px\)\) 9px 16px;/,
+  );
+});

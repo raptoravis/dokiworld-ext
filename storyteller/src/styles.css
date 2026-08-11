@@ -552,8 +552,8 @@ button { color: inherit; }
 .topbar {
   grid-template-columns: minmax(0, 1fr) auto;
   height: 74px;
-  margin-right: var(--host-exit-safe, 0px);
-  padding: 9px 14px 9px 16px;
+  margin-right: 0;
+  padding: 9px calc(14px + var(--host-exit-safe, 0px)) 9px 16px;
   border: 1px solid var(--panel-border);
   border-bottom-color: rgba(255, 255, 255, .1);
   border-radius: 18px 18px 0 0;
@@ -653,7 +653,7 @@ button { color: inherit; }
   width: min(100%, clamp(680px, 76cqw, 1080px));
   align-items: baseline;
   gap: 8px;
-  margin: 0 auto clamp(24px, 2vw, 32px);
+  margin: 0 0 clamp(24px, 2vw, 32px);
   border: 1px solid rgba(255,255,255,.14);
   border-radius: 12px;
   padding: 14px 20px;
@@ -669,8 +669,9 @@ button { color: inherit; }
 
 .lines {
   width: 100%;
-  max-width: 1120px;
+  max-width: none;
   min-height: auto;
+  margin: 0;
   align-content: start;
   gap: clamp(24px, 2vw, 32px);
 }
@@ -681,7 +682,7 @@ button { color: inherit; }
 }
 
 .message-group.is-ai {
-  width: min(100%, clamp(680px, 76cqw, 1080px));
+  width: 100%;
   grid-template-columns: 46px minmax(0, 1fr);
   align-items: start;
   gap: 14px;
