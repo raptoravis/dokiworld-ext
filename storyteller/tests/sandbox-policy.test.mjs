@@ -40,6 +40,15 @@ test("Storyteller business code uses the typed SDK extension instead of wire mes
   assert.doesNotMatch(source, /dokiworld-app-(?:episode|chat)/);
 });
 
+test("Storyteller declares DokiWorld P0 and P1 capabilities", async () => {
+  const manifest = await readFile(new URL("../src/manifest.json", import.meta.url), "utf8").then(JSON.parse);
+  for (const capability of ["media", "speech", "storage", "character", "persona", "apps"]) {
+    assert.ok(manifest.runtime.extensions.includes(capability), `missing ${capability}`);
+  }
+  assert.ok(manifest.contextScopes.optional.includes("character.card"));
+  assert.ok(manifest.contextScopes.optional.includes("player_persona"));
+});
+
 test("wide Storyteller dialogue does not recreate the empty dark column", async () => {
   const stylesheets = await Promise.all([
     readFile(new URL("../src/styles.css", import.meta.url), "utf8"),

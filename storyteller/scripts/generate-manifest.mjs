@@ -31,11 +31,14 @@ const manifest = {
     protocolVersion: 2,
     input: { contract: "doki.world.storyteller-input", version: 1 },
     outputs: [{ contract: "doki.world.session-result", version: 1 }],
-    extensions: ["world", "episode", "chat", "dialogue", "checkpoint"],
+    extensions: ["world", "episode", "chat", "dialogue", "media", "speech", "storage", "character", "persona", "apps", "checkpoint"],
   },
   episodeRenderer: true,
   launchRequirements: { minPlayers: 1 },
-  contextScopes: { required: [], optional: [] },
+  contextScopes: {
+    required: [],
+    optional: ["character.identity", "character.avatar", "character.card", "player_persona"],
+  },
   locales: {
     en: {
       name: "Storyteller",

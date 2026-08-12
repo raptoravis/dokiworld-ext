@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.6",
+  "version": "1.1.0",
   "id": "storyteller",
   "kind": "world",
   "status": "active",
@@ -24,6 +24,12 @@
       "episode",
       "chat",
       "dialogue",
+      "media",
+      "speech",
+      "storage",
+      "character",
+      "persona",
+      "apps",
       "checkpoint"
     ]
   },
@@ -33,7 +39,12 @@
   },
   "contextScopes": {
     "required": [],
-    "optional": []
+    "optional": [
+      "character.identity",
+      "character.avatar",
+      "character.card",
+      "player_persona"
+    ]
   },
   "locales": {
     "en": {
