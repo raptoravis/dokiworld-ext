@@ -24,3 +24,23 @@ npm run serve
 构建扩展包后，还可以通过 `npm test`、`npm run validate`、`npm run hash` 和 `npm run conformance` 执行可选的项目检查。
 
 该项目源码独立于 DokiWorld 的 `frontend/src/extensions/builtin/` 目录，仅使用公开的 Extension SDK 和 Host API。
+
+## SDK 依赖来源
+
+项目默认使用公共 npm registry 中的 `@dokiworld/extension-sdk@^1.0.1`。联合开发尚未发布的 SDK 变更时，可以临时使用相邻 `dokiworld.git` 仓库中的源码包：
+
+```json
+{
+  "devDependencies": {
+    "@dokiworld/extension-sdk": "file:../../dokiworld.git/packages/extension-sdk"
+  }
+}
+```
+
+修改依赖后运行 `npm install`，使 `package-lock.json` 和 `node_modules` 一起切换到本地包。该路径要求 `dokiworld-exts.git` 与 `dokiworld.git` 是相邻目录。
+
+提交或发布 extension-bg 前，应恢复公共 npm 包并刷新 lockfile：
+
+```powershell
+npm install "@dokiworld/extension-sdk@^1.0.1" --save-dev
+```

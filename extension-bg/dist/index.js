@@ -1,4 +1,4 @@
-// ../../dokiworld.git/packages/extension-sdk/src/index.js
+// node_modules/@dokiworld/extension-sdk/src/index.js
 var EXTENSION_API_VERSION = "1.0.0";
 var EXTENSION_CONTRACT_VERSION = 1;
 

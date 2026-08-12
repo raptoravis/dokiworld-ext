@@ -1,6 +1,6 @@
 # dokiworld-exts
 
-DokiWorld 的第三方 UI Extension 集合。仓库中的 Extension 使用相邻 DokiWorld 仓库提供的 `@dokiworld/extension-sdk` 开发、测试和校验，并构建为可独立托管的浏览器静态资源包。
+DokiWorld 的第三方 UI Extension 集合。仓库中的 Extension 使用公共 npm 包 `@dokiworld/extension-sdk` 开发、测试和校验，并构建为可独立托管的浏览器静态资源包。开发和构建 Extension 不需要访问私有 DokiWorld 仓库，也不依赖仓库之间的相对目录位置。
 
 UI Extension 与 iframe App 不同：它们作为同源浏览器代码运行，可以挂载 DokiWorld 提供的 UI Slot、订阅事件、注册命令并使用命名空间存储。Extension SDK 提供版本化 interface、兼容性检查和恢复机制，但不是权限沙箱；安装前仍应审核第三方源码和构建产物。
 
@@ -8,7 +8,7 @@ UI Extension 与 iframe App 不同：它们作为同源浏览器代码运行，�
 
 | 目录 | 版本 | Extension ID | 说明 |
 |---|---:|---|---|
-| `extension-bg` | `1.2.2` | `third-party.background-customizer` | 页面背景自定义 Extension，支持背景图片、底色、遮罩、尺寸、位置、启用/禁用和重置 |
+| `extension-bg` | `1.2.3` | `third-party.background-customizer` | 页面背景自定义 Extension，支持背景图片、底色、遮罩、尺寸、位置、启用/禁用和重置 |
 
 每个 Extension 在自己的目录中维护：
 
@@ -21,13 +21,35 @@ UI Extension 与 iframe App 不同：它们作为同源浏览器代码运行，�
 
 ## Extension SDK
 
-SDK 位于：
+SDK 已发布到公共 npm registry：
 
 ```text
-D:\dev\dokiworld.git\packages\extension-sdk
+@dokiworld/extension-sdk
 ```
 
-Extension 通过本地开发依赖引用它：
+Extension 通过公共 semver 开发依赖引用它：
+
+```json
+{
+  "devDependencies": {
+    "@dokiworld/extension-sdk": "^1.0.1"
+  }
+}
+```
+
+当前 npm 包版本为 `1.0.1`，Extension API 版本为 `1.0.0`；manifest 使用 API 兼容范围：
+
+```json
+{
+  "apiVersion": "^1.0.0"
+}
+```
+
+构建时会把 SDK import 内联到 Extension 的浏览器 ESM 入口，因此部署后的 `dist/index.js` 不包含无法由浏览器解析的裸 npm import。
+
+### 使用相邻 DokiWorld 仓库中的 SDK
+
+只有在联合开发尚未发布的 SDK 变更时，才需要把依赖临时切换到与本仓库相邻的 `dokiworld.git`：
 
 ```json
 {
@@ -37,15 +59,22 @@ Extension 通过本地开发依赖引用它：
 }
 ```
 
-当前 SDK 版本为 `1.0.0`，Extension manifest 使用兼容范围：
+在具体 Extension 目录运行 `npm install`，让 `package-lock.json` 和 `node_modules` 一起切换到本地 SDK。例如 extension-bg：
 
-```json
-{
-  "apiVersion": "^1.0.0"
-}
+```powershell
+cd D:\dev\dokiworld-exts.git\extension-bg
+npm install
+npm test
+npm run build
 ```
 
-构建时会把 SDK import 内联到 Extension 的浏览器 ESM 入口，因此部署后的 `dist/index.js` 不包含无法由浏览器解析的裸 npm import。
+本地 `file:` 形式要求三个仓库保持当前相邻目录结构，仅适用于本地联调。完成联调后，用下面的命令恢复公共 npm 包并刷新 lockfile：
+
+```powershell
+npm install "@dokiworld/extension-sdk@^1.0.1" --save-dev
+```
+
+提交和发布 Extension 时默认应保留公共 semver 依赖；不要提交指向开发者本机目录结构的 `file:` lockfile。
 
 ### 公开 interface
 

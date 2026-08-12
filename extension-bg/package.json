@@ -1,6 +1,6 @@
 {
   "name": "dokiworld-background-extension",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
     "conformance": "dokiworld-extension conformance dist/manifest.json"
   },
   "devDependencies": {
-    "@dokiworld/extension-sdk": "file:../../dokiworld.git/packages/extension-sdk",
+    "@dokiworld/extension-sdk": "^1.0.1",
     "esbuild": "^0.25.0"
   }
 }
