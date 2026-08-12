@@ -36,7 +36,7 @@ async function activate(context) {
   });
   context.subscriptions.add(disposeSettings);
   const disposeChatSettings = context.ui.slots.mount(
-    "app.header.actions",
+    "chat.header.actions",
     ({ element, context: slotContext }) => {
       if (slotContext?.version !== EXTENSION_CONTRACT_VERSION || slotContext?.surface !== "chat-header") {
         return void 0;

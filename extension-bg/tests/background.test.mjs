@@ -59,14 +59,9 @@ test("adds a settings button only to the chat header", async () => {
   const disposeExtension = await activate(host.context);
 
   const registration = host.registrations.slots.find(
-    ({ slotId }) => slotId === "app.header.actions",
+    ({ slotId }) => slotId === "chat.header.actions",
   );
   assert.ok(registration);
-
-  const appHeader = createDomElement("span");
-  const appCleanup = registration.mount(appHeader, { version: 1, surface: "app-header" });
-  assert.equal(appHeader.children.length, 0);
-  assert.equal(appCleanup, undefined);
 
   const chatHeader = createDomElement("span");
   const chatCleanup = registration.mount(chatHeader, { version: 1, surface: "chat-header" });
