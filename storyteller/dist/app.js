@@ -663,11 +663,11 @@ var INPUT_VALIDATORS = Object.freeze({
   generateTagline: (input) => isString2(input.characterId) && isOptionalPositiveInteger(input.sessionId)
 });
 var RESULT_VALIDATORS = Object.freeze({
-  generateDialogue: (result) => isRecord3(result) && isPositiveInteger(result.sessionId) && Array.isArray(result.utterances),
-  regenerateDialogue: (result) => isRecord3(result) && isPositiveInteger(result.sessionId) && Array.isArray(result.utterances),
-  generateOpening: (result) => isRecord3(result) && typeof result.openingLine === "string" && Array.isArray(result.segments),
-  generateSuggestions: (result) => isRecord3(result) && Array.isArray(result.suggestions) && result.suggestions.every((item) => typeof item === "string"),
-  generateTagline: (result) => isRecord3(result) && typeof result.tagline === "string"
+  generateDialogue: (result2) => isRecord3(result2) && isPositiveInteger(result2.sessionId) && Array.isArray(result2.utterances),
+  regenerateDialogue: (result2) => isRecord3(result2) && isPositiveInteger(result2.sessionId) && Array.isArray(result2.utterances),
+  generateOpening: (result2) => isRecord3(result2) && typeof result2.openingLine === "string" && Array.isArray(result2.segments),
+  generateSuggestions: (result2) => isRecord3(result2) && Array.isArray(result2.suggestions) && result2.suggestions.every((item) => typeof item === "string"),
+  generateTagline: (result2) => isRecord3(result2) && typeof result2.tagline === "string"
 });
 function defaultId2() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -757,6 +757,219 @@ function createDialogueClientExtension(client, {
     generateSuggestions: (input) => invoke("generateSuggestions", input),
     generateTagline: (input) => invoke("generateTagline", input),
     dispose
+  });
+}
+
+// ../../dokiworld.git/packages/app-sdk/src/capability.js
+var MAX_ID_LENGTH3 = 200;
+var MAX_PAYLOAD_BYTES2 = 64 * 1024;
+var MAX_PAYLOAD_DEPTH2 = 12;
+var MAX_PAYLOAD_NODES2 = 2e3;
+var isRecord4 = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
+var isId = (value) => typeof value === "string" && value.length > 0 && value.length <= MAX_ID_LENGTH3;
+function isBoundedCapabilityValue(value) {
+  let encoded;
+  try {
+    encoded = JSON.stringify(value);
+  } catch {
+    return false;
+  }
+  if (encoded === void 0 || new TextEncoder().encode(encoded).byteLength > MAX_PAYLOAD_BYTES2) return false;
+  let nodes = 0;
+  const visit = (current, depth) => {
+    nodes += 1;
+    if (nodes > MAX_PAYLOAD_NODES2 || depth > MAX_PAYLOAD_DEPTH2) return false;
+    if (current === null || typeof current === "string" || typeof current === "boolean") return true;
+    if (typeof current === "number") return Number.isFinite(current);
+    if (Array.isArray(current)) return current.every((item) => visit(item, depth + 1));
+    if (!isRecord4(current)) return false;
+    return Object.entries(current).every(([key, item]) => key.length <= MAX_ID_LENGTH3 && visit(item, depth + 1));
+  };
+  return visit(value, 0);
+}
+function defaultId3() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+var AppCapabilityError = class extends Error {
+  constructor(code, message, capability, operation) {
+    super(message);
+    this.name = "AppCapabilityError";
+    this.code = code;
+    this.capability = capability;
+    this.operation = operation;
+  }
+};
+var AppCapabilityTimeoutError = class extends AppCapabilityError {
+  constructor(capability, operation) {
+    super("timeout", `DokiWorld ${capability} operation ${operation} timed out`, capability, operation);
+    this.name = "AppCapabilityTimeoutError";
+  }
+};
+function createCapabilityClient(client, definition7, { createId = defaultId3, timeoutMs = 3e4 } = {}) {
+  if (!client || typeof client.send !== "function" || typeof client.onMessage !== "function") throw new Error("Invalid capability client channel");
+  if (!isRecord4(definition7) || !isId(definition7.name) || !isRecord4(definition7.operations)) throw new Error("Invalid capability definition");
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("Invalid capability timeout");
+  const requestType = `dokiworld-app-${definition7.name}-request`;
+  const responseType = `dokiworld-app-${definition7.name}-response`;
+  const pending = /* @__PURE__ */ new Map();
+  let disposed = false;
+  const finish = (requestId, outcome) => {
+    const request = pending.get(requestId);
+    if (!request) return;
+    clearTimeout(request.timer);
+    pending.delete(requestId);
+    outcome instanceof Error ? request.reject(outcome) : request.resolve(outcome);
+  };
+  const unsubscribe = client.onMessage((message) => {
+    if (!isRecord4(message) || message.type !== responseType || !isRecord4(message.payload)) return;
+    const { requestId, operation, status } = message.payload;
+    const request = isId(requestId) ? pending.get(requestId) : null;
+    if (!request || request.operation !== operation) return;
+    const operationDefinition = definition7.operations[operation];
+    if (status === "fulfilled" && isBoundedCapabilityValue(message.payload.result) && operationDefinition.output(message.payload.result)) {
+      finish(requestId, message.payload.result);
+    } else if (status === "rejected" && isRecord4(message.payload.error) && isId(message.payload.error.code) && typeof message.payload.error.message === "string") {
+      finish(requestId, new AppCapabilityError(message.payload.error.code, message.payload.error.message, definition7.name, operation));
+    }
+  });
+  const invoke = (operation, input = {}) => {
+    if (disposed) return Promise.reject(new AppCapabilityError("disposed", `The ${definition7.name} capability was disposed`, definition7.name, operation));
+    const operationDefinition = definition7.operations[operation];
+    if (!operationDefinition || !isBoundedCapabilityValue(input) || !operationDefinition.input(input)) {
+      return Promise.reject(new AppCapabilityError("invalid-request", `Invalid ${definition7.name}.${operation} request`, definition7.name, operation));
+    }
+    const requestId = createId(`${definition7.name}-request`);
+    if (!isId(requestId) || pending.has(requestId)) return Promise.reject(new AppCapabilityError("invalid-request-id", "The capability request id is invalid or already in use", definition7.name, operation));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => finish(requestId, new AppCapabilityTimeoutError(definition7.name, operation)), timeoutMs);
+      pending.set(requestId, { operation, resolve, reject, timer });
+      try {
+        client.send(requestType, { requestId, operation, input });
+      } catch (error) {
+        finish(requestId, error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  };
+  return Object.freeze({
+    invoke,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      unsubscribe();
+      for (const [requestId, request] of pending) finish(requestId, new AppCapabilityError("disposed", `The ${definition7.name} capability was disposed`, definition7.name, request.operation));
+    }
+  });
+}
+
+// ../../dokiworld.git/packages/app-sdk/src/media.js
+var isRecord5 = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
+var isString3 = (value) => typeof value === "string" && value.length > 0;
+var isJob = (value) => isRecord5(value) && isString3(value.id) && ["image", "video"].includes(value.mediaType) && ["pending", "processing", "done", "failed", "cancelled"].includes(value.status) && (value.urls === void 0 || Array.isArray(value.urls) && value.urls.every(isString3));
+var generationInput = (mediaType) => (value) => isRecord5(value) && (value.mediaType === void 0 || value.mediaType === mediaType) && (isString3(value.prompt) || Number.isInteger(value.sessionId)) && (value.characterId === void 0 || isString3(value.characterId));
+var definition = Object.freeze({ name: "media", operations: Object.freeze({
+  generateImage: { input: generationInput("image"), output: isJob },
+  generateVideo: { input: generationInput("video"), output: isJob },
+  getJob: { input: (value) => isRecord5(value) && isString3(value.jobId), output: isJob },
+  cancelJob: { input: (value) => isRecord5(value) && isString3(value.jobId), output: (value) => isRecord5(value) && typeof value.cancelled === "boolean" }
+}) });
+function createMediaClientExtension(client, options) {
+  const capability = createCapabilityClient(client, definition, options);
+  return Object.freeze({
+    generateImage: (input) => capability.invoke("generateImage", input),
+    generateVideo: (input) => capability.invoke("generateVideo", input),
+    getJob: (jobId) => capability.invoke("getJob", { jobId }),
+    cancelJob: (jobId) => capability.invoke("cancelJob", { jobId }),
+    dispose: capability.dispose
+  });
+}
+
+// ../../dokiworld.git/packages/app-sdk/src/speech.js
+var isRecord6 = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
+var isString4 = (value) => typeof value === "string" && value.length > 0;
+var definition2 = Object.freeze({ name: "speech", operations: Object.freeze({
+  synthesize: {
+    input: (value) => isRecord6(value) && isString4(value.text) && isString4(value.characterId) && (value.speakerId === void 0 || isString4(value.speakerId)) && (value.locale === void 0 || isString4(value.locale)),
+    output: (value) => isRecord6(value) && isString4(value.audioUrl) && typeof value.cached === "boolean"
+  }
+}) });
+function createSpeechClientExtension(client, options) {
+  const capability = createCapabilityClient(client, definition2, options);
+  return Object.freeze({ synthesize: (input) => capability.invoke("synthesize", input), dispose: capability.dispose });
+}
+
+// ../../dokiworld.git/packages/app-sdk/src/storage.js
+var isRecord7 = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
+var isString5 = (value) => typeof value === "string" && value.length > 0;
+var isCheckpoint = (value) => isRecord7(value) && isString5(value.contract) && Number.isInteger(value.version) && value.version > 0 && "data" in value && isBoundedCapabilityValue(value.data);
+var definition3 = Object.freeze({ name: "storage", operations: Object.freeze({
+  loadCheckpoint: { input: (value) => isRecord7(value) && Object.keys(value).length === 0, output: (value) => isRecord7(value) && (value.checkpoint === null || isCheckpoint(value.checkpoint)) },
+  saveCheckpoint: { input: (value) => isRecord7(value) && isCheckpoint(value.checkpoint), output: (value) => isRecord7(value) && value.saved === true },
+  clearCheckpoint: { input: (value) => isRecord7(value) && Object.keys(value).length === 0, output: (value) => isRecord7(value) && value.cleared === true }
+}) });
+function createStorageClientExtension(client, options) {
+  const capability = createCapabilityClient(client, definition3, options);
+  return Object.freeze({
+    loadCheckpoint: () => capability.invoke("loadCheckpoint", {}),
+    saveCheckpoint: (checkpoint) => capability.invoke("saveCheckpoint", { checkpoint }),
+    clearCheckpoint: () => capability.invoke("clearCheckpoint", {}),
+    dispose: capability.dispose
+  });
+}
+
+// ../../dokiworld.git/packages/app-sdk/src/character.js
+var isRecord8 = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
+var isString6 = (value) => typeof value === "string" && value.length > 0;
+var empty = (value) => isRecord8(value) && Object.keys(value).length === 0;
+var isCharacter = (value) => isRecord8(value) && isString6(value.id) && isString6(value.name) && isBoundedCapabilityValue(value);
+var result = (value) => isRecord8(value) && (value.character === null || isCharacter(value.character));
+var definition4 = Object.freeze({ name: "character", operations: Object.freeze({
+  getCurrent: { input: empty, output: result },
+  getPublicProfile: { input: (value) => isRecord8(value) && isString6(value.characterId), output: result }
+}) });
+function createCharacterClientExtension(client, options) {
+  const capability = createCapabilityClient(client, definition4, options);
+  return Object.freeze({
+    getCurrent: () => capability.invoke("getCurrent", {}),
+    getPublicProfile: (characterId) => capability.invoke("getPublicProfile", { characterId }),
+    dispose: capability.dispose
+  });
+}
+
+// ../../dokiworld.git/packages/app-sdk/src/persona.js
+var isRecord9 = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
+var isString7 = (value) => typeof value === "string" && value.length > 0;
+var isPersona = (value) => isRecord9(value) && isString7(value.id) && isString7(value.name) && isBoundedCapabilityValue(value);
+var selectionInput = (value) => isRecord9(value) && isString7(value.characterId);
+var selectionOutput = (value) => isRecord9(value) && (value.persona === null || isPersona(value.persona));
+var definition5 = Object.freeze({ name: "persona", operations: Object.freeze({
+  list: { input: (value) => isRecord9(value) && Object.keys(value).length === 0, output: (value) => isRecord9(value) && Array.isArray(value.personas) && value.personas.every(isPersona) },
+  getSelected: { input: selectionInput, output: selectionOutput },
+  requestSelection: { input: selectionInput, output: selectionOutput }
+}) });
+function createPersonaClientExtension(client, options) {
+  const capability = createCapabilityClient(client, definition5, options);
+  return Object.freeze({
+    list: () => capability.invoke("list", {}),
+    getSelected: (characterId) => capability.invoke("getSelected", { characterId }),
+    requestSelection: (characterId) => capability.invoke("requestSelection", { characterId }),
+    dispose: capability.dispose
+  });
+}
+
+// ../../dokiworld.git/packages/app-sdk/src/apps.js
+var isRecord10 = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
+var isString8 = (value) => typeof value === "string" && value.length > 0;
+var isApp = (value) => isRecord10(value) && isString8(value.id) && isString8(value.name) && Number.isInteger(value.protocolVersion) && isBoundedCapabilityValue(value);
+var definition6 = Object.freeze({ name: "apps", operations: Object.freeze({
+  list: { input: (value) => isRecord10(value) && (value.capability === void 0 || isString8(value.capability)), output: (value) => isRecord10(value) && Array.isArray(value.apps) && value.apps.every(isApp) },
+  launch: { input: (value) => isRecord10(value) && isString8(value.appId) && isRecord10(value.input) && isString8(value.input.contract) && Number.isInteger(value.input.version) && value.input.version > 0 && "data" in value.input && isBoundedCapabilityValue(value.input.data), output: (value) => isRecord10(value) && ["completed", "cancelled"].includes(value.status) && isBoundedCapabilityValue(value) }
+}) });
+function createAppsClientExtension(client, options) {
+  const capability = createCapabilityClient(client, definition6, options);
+  return Object.freeze({
+    list: (filter = {}) => capability.invoke("list", filter),
+    launch: (input) => capability.invoke("launch", input),
+    dispose: capability.dispose
   });
 }
 
@@ -985,10 +1198,16 @@ var elements = {
 };
 var dokiworld = createAppClient({
   appId: WORLD_ID,
-  extensions: ["world", "episode", "chat", "dialogue", "checkpoint"]
+  extensions: ["world", "episode", "chat", "dialogue", "media", "speech", "storage", "character", "persona", "apps", "checkpoint"]
 });
 var episode = createEpisodeClientExtension(dokiworld);
 var dialogue = createDialogueClientExtension(dokiworld);
+var media = createMediaClientExtension(dokiworld);
+var speech = createSpeechClientExtension(dokiworld);
+var storage = createStorageClientExtension(dokiworld);
+var character = createCharacterClientExtension(dokiworld);
+var persona = createPersonaClientExtension(dokiworld);
+var apps = createAppsClientExtension(dokiworld);
 var locale = "en";
 var copy = COPY.en;
 var experience = null;
@@ -1013,6 +1232,8 @@ var activeVideo = null;
 var activeImage = null;
 var videoWatchdog = null;
 var dialogueSessionId = null;
+var speechAudio = null;
+var platformAppIds = /* @__PURE__ */ new Set();
 var VIDEO_LOAD_TIMEOUT_MS = 2e4;
 var VIDEO_PLAYBACK_GRACE_MS = 1e4;
 function clearVideoWatchdog() {
@@ -1029,7 +1250,7 @@ function armVideoWatchdog(item, timeoutMs = VIDEO_LOAD_TIMEOUT_MS) {
   }, timeoutMs);
 }
 var replayingImage = false;
-function isRecord4(value) {
+function isRecord11(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 function safeUrl(value) {
@@ -1090,16 +1311,34 @@ function setComposerEnabled(enabled) {
   elements.chatSend.disabled = !enabled || !elements.chatInput.value.trim();
   elements.suggest.disabled = !enabled;
 }
-function speak(text, force = false) {
-  if (!ttsEnabled && !force || !("speechSynthesis" in window) || !text.trim()) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = locale === "zh-cn" ? "zh-CN" : "en-US";
-  window.speechSynthesis.speak(utterance);
+async function speak(text, force = false) {
+  if (!ttsEnabled && !force || !text.trim() || !experience?.characterId) return;
+  speechAudio?.pause();
+  try {
+    const result2 = await speech.synthesize({
+      text,
+      characterId: experience.characterId,
+      locale
+    });
+    speechAudio = new Audio(result2.audioUrl);
+    await speechAudio.play();
+  } catch {
+    elements.chatStatus.textContent = copy.tryAgain;
+  }
 }
 function post(event) {
   if (!dokiworld.runId) return;
   episode.send(event);
+}
+function savePlatformCheckpoint() {
+  void storage.saveCheckpoint({
+    contract: "doki.world.storyteller-state",
+    version: 1,
+    data: {
+      dialogueSessionId,
+      playerPersonaId: playerPersona?.id || null
+    }
+  }).catch(() => void 0);
 }
 function showWaiting() {
   hideViews();
@@ -1159,13 +1398,13 @@ function showControls() {
 function episodeItems(utterances) {
   if (!Array.isArray(utterances)) return [];
   return utterances.flatMap((utterance) => {
-    if (!isRecord4(utterance) || !Array.isArray(utterance.segments)) return [];
+    if (!isRecord11(utterance) || !Array.isArray(utterance.segments)) return [];
     const speakerName = typeof utterance.speakerName === "string" ? utterance.speakerName.trim() : "";
-    return utterance.segments.filter(isRecord4).map((segment) => ({ segment, speakerName }));
+    return utterance.segments.filter(isRecord11).map((segment) => ({ segment, speakerName }));
   });
 }
 function orderedBeats() {
-  return Array.isArray(runtimeConfig?.beats) ? [...runtimeConfig.beats].filter(isRecord4).sort((a, b) => Number(a.position || 0) - Number(b.position || 0) || String(a.id).localeCompare(String(b.id))) : [];
+  return Array.isArray(runtimeConfig?.beats) ? [...runtimeConfig.beats].filter(isRecord11).sort((a, b) => Number(a.position || 0) - Number(b.position || 0) || String(a.id).localeCompare(String(b.id))) : [];
 }
 function nextConfiguredBeat(beat) {
   if (typeof beat?.nextBeatId === "string") return beatsById.get(beat.nextBeatId) || null;
@@ -1200,7 +1439,7 @@ function pathNeedsLlm(startBeatId) {
   const visited = /* @__PURE__ */ new Set();
   while (beat && !visited.has(beat.id)) {
     visited.add(beat.id);
-    if (Array.isArray(beat.utterances) && beat.utterances.some((utterance) => isRecord4(utterance) && utterance.source === "llm")) return true;
+    if (Array.isArray(beat.utterances) && beat.utterances.some((utterance) => isRecord11(utterance) && utterance.source === "llm")) return true;
     if (beat.choices || beat.action) return false;
     beat = nextConfiguredBeat(beat);
   }
@@ -1212,7 +1451,7 @@ function localPathItems(startBeatId) {
   const visited = /* @__PURE__ */ new Set();
   while (beat && !visited.has(beat.id)) {
     visited.add(beat.id);
-    const assetRefs = Array.isArray(beat.assets) ? [...beat.assets].filter(isRecord4).sort((a, b) => Number(a.position || 0) - Number(b.position || 0)) : [];
+    const assetRefs = Array.isArray(beat.assets) ? [...beat.assets].filter(isRecord11).sort((a, b) => Number(a.position || 0) - Number(b.position || 0)) : [];
     assetRefs.forEach((reference) => {
       const asset = assetsById.get(reference.assetId);
       if (!asset || !safeUrl(asset.url)) return;
@@ -1229,16 +1468,16 @@ function localPathItems(startBeatId) {
       });
     });
     (Array.isArray(beat.utterances) ? beat.utterances : []).forEach((utterance) => {
-      if (!isRecord4(utterance) || utterance.source === "llm") return;
+      if (!isRecord11(utterance) || utterance.source === "llm") return;
       (Array.isArray(utterance.segments) ? utterance.segments : []).forEach((segment) => {
-        if (!isRecord4(segment)) return;
+        if (!isRecord11(segment)) return;
         items.push({
           speakerName: experience?.title || "",
           segment: { ...segment, beatId: beat.id, localAuthored: true }
         });
       });
     });
-    if (isRecord4(beat.choices)) {
+    if (isRecord11(beat.choices)) {
       items.push({
         speakerName: experience?.title || "",
         segment: {
@@ -1252,7 +1491,7 @@ function localPathItems(startBeatId) {
       });
       break;
     }
-    if (isRecord4(beat.action)) {
+    if (isRecord11(beat.action)) {
       items.push({
         speakerName: experience?.title || "",
         segment: {
@@ -1436,13 +1675,13 @@ function appendCompletedVideo(item) {
   heading.append(speaker);
   const bubble = document.createElement("div");
   bubble.className = "message-bubble completed-video-bubble";
-  const media = document.createElement("video");
-  media.className = "completed-video-media";
-  media.src = src;
-  media.controls = true;
-  media.playsInline = true;
-  media.preload = "metadata";
-  media.setAttribute("aria-label", copy.replayVideo);
+  const media2 = document.createElement("video");
+  media2.className = "completed-video-media";
+  media2.src = src;
+  media2.controls = true;
+  media2.playsInline = true;
+  media2.preload = "metadata";
+  media2.setAttribute("aria-label", copy.replayVideo);
   const frame = document.createElement("div");
   frame.className = "completed-video-frame";
   const replay = document.createElement("button");
@@ -1450,11 +1689,11 @@ function appendCompletedVideo(item) {
   replay.type = "button";
   replay.textContent = "\u25B6";
   replay.setAttribute("aria-label", copy.replayVideo);
-  replay.addEventListener("click", () => void media.play().catch(() => void 0));
-  media.addEventListener("play", () => replay.classList.add("is-hidden"));
-  media.addEventListener("pause", () => replay.classList.remove("is-hidden"));
-  media.addEventListener("ended", () => replay.classList.remove("is-hidden"));
-  frame.append(media, replay);
+  replay.addEventListener("click", () => void media2.play().catch(() => void 0));
+  media2.addEventListener("play", () => replay.classList.add("is-hidden"));
+  media2.addEventListener("pause", () => replay.classList.remove("is-hidden"));
+  media2.addEventListener("ended", () => replay.classList.remove("is-hidden"));
+  frame.append(media2, replay);
   bubble.append(frame);
   const caption = typeof item.segment.caption === "string" ? item.segment.caption.trim() : "";
   if (caption) {
@@ -1494,6 +1733,7 @@ async function submitReply(value) {
       playerPersona
     });
     dialogueSessionId = response.sessionId;
+    savePlatformCheckpoint();
     acceptEpisode(response.utterances);
   } catch {
     showError();
@@ -1508,6 +1748,7 @@ async function regenerateLatestDialogue() {
       playerPersona
     });
     dialogueSessionId = response.sessionId;
+    savePlatformCheckpoint();
     elements.lines.querySelector(".message-group.is-ai:last-of-type")?.remove();
     acceptEpisode(response.utterances);
   } catch {
@@ -1574,14 +1815,14 @@ function appendGeneratedMedia(type, url) {
   heading.append(speaker);
   const bubble = document.createElement("div");
   bubble.className = "message-bubble generated-media-bubble";
-  const media = document.createElement(type === "video" ? "video" : "img");
-  media.className = "generated-chat-media";
-  media.src = src;
+  const media2 = document.createElement(type === "video" ? "video" : "img");
+  media2.className = "generated-chat-media";
+  media2.src = src;
   if (type === "video") {
-    media.controls = true;
-    media.playsInline = true;
-  } else media.alt = "";
-  bubble.append(media);
+    media2.controls = true;
+    media2.playsInline = true;
+  } else media2.alt = "";
+  bubble.append(media2);
   bubble.prepend(heading);
   content.append(bubble);
   group.append(content);
@@ -1589,7 +1830,7 @@ function appendGeneratedMedia(type, url) {
   elements.dialogueView.scrollTo({ top: elements.dialogueView.scrollHeight, behavior: "smooth" });
 }
 function renderChoices(item) {
-  const options = Array.isArray(item.segment.options) ? item.segment.options.filter((option) => isRecord4(option) && typeof option.id === "string") : [];
+  const options = Array.isArray(item.segment.options) ? item.segment.options.filter((option) => isRecord11(option) && typeof option.id === "string") : [];
   if (!options.length) return renderNext();
   presentedSegments += 1;
   hideViews();
@@ -1630,20 +1871,20 @@ function renderChoices(item) {
   window.setTimeout(() => elements.choices.querySelector("button")?.focus(), 80);
 }
 async function findConfiguredApp(gameId) {
-  const app = appCatalog.find((entry) => isRecord4(entry) && entry.id === gameId && entry.status !== "disabled" && (entry.protocolVersion === 1 || entry.protocolVersion === 2));
-  if (!app || !safeUrl(app.entryUrl)) throw new Error("app unavailable");
+  const app = appCatalog.find((entry) => isRecord11(entry) && entry.id === gameId && entry.status !== "disabled" && (entry.protocolVersion === 1 || entry.protocolVersion === 2));
+  if (!app || !platformAppIds.has(gameId) && !safeUrl(app.entryUrl)) throw new Error("app unavailable");
   return app;
 }
 function createGameContext() {
-  const character = {
+  const character2 = {
     id: experience?.characterId || "",
     displayName: experience?.title || ""
   };
   const portraitUrl = safeUrl(experience?.portraitUrl);
-  if (portraitUrl) character.avatar = { url: portraitUrl, alt: experience?.title || "" };
-  if (experience?.description) character.card = { description: experience.description, tags: [] };
+  if (portraitUrl) character2.avatar = { url: portraitUrl, alt: experience?.title || "" };
+  if (experience?.description) character2.card = { description: experience.description, tags: [] };
   return {
-    context: { schemaVersion: 1, character },
+    context: { schemaVersion: 1, character: character2 },
     grantedScopes: ["character.identity", "character.avatar", "character.card"]
   };
 }
@@ -1657,6 +1898,26 @@ async function openConfiguredApp(config) {
     hostedResultPending = false;
     elements.shell.dataset.phase = "app";
     const app = await findConfiguredApp(gameId);
+    if (platformAppIds.has(gameId)) {
+      const runtime = isRecord11(app.runtime) ? app.runtime : {};
+      const launch = await apps.launch({
+        appId: gameId,
+        input: {
+          contract: runtime.input?.contract || "doki.game.match3-input",
+          version: runtime.input?.version || 1,
+          data: { options: createGameOptions(config) }
+        }
+      });
+      if (launch.status === "completed" && isRecord11(launch.output?.data)) {
+        const current = { app, config, runId: "platform", host: null };
+        settleActiveGameResult(current, launch.output.data);
+      } else if (localActionBeat) {
+        completeLocalConfiguredApp();
+      } else {
+        renderNext();
+      }
+      return;
+    }
     const runId = `${dokiworld.runId}:${Date.now().toString(36)}`;
     activeApp = { app, config, runId, host: null };
     elements.appTitle.textContent = typeof config.title === "string" && config.title.trim() ? config.title : app.locales?.[locale]?.name || app.locales?.en?.name || gameId;
@@ -1669,7 +1930,7 @@ async function openConfiguredApp(config) {
     showError(copy.appUnavailable);
   }
 }
-function renderGameResult(result, configuredBeat, config, onContinue = null) {
+function renderGameResult(result2, configuredBeat, config, onContinue = null) {
   showDialogueHistory();
   const card = document.createElement("article");
   card.className = "game-result-panel";
@@ -1683,10 +1944,10 @@ function renderGameResult(result, configuredBeat, config, onContinue = null) {
   const scoreLabel = document.createElement("span");
   scoreLabel.textContent = copy.resultScore;
   const score = document.createElement("strong");
-  const normalizedScore = Number(result.normalizedScore);
+  const normalizedScore = Number(result2.normalizedScore);
   score.textContent = Number.isFinite(normalizedScore) ? `${Math.round(Math.max(0, Math.min(100, normalizedScore)))} / 100` : copy.resultComplete;
   summary.append(scoreLabel, score);
-  const metrics = isRecord4(result.metrics) ? result.metrics : {};
+  const metrics = isRecord11(result2.metrics) ? result2.metrics : {};
   const metricDefinitions = [
     ["points", copy.resultPoints],
     ["moves", copy.resultMoves],
@@ -1770,12 +2031,12 @@ function preserveCompletedImage(item) {
   preview.className = "completed-image-preview";
   preview.type = "button";
   preview.setAttribute("aria-label", copy.replayImage);
-  const media = document.createElement("img");
-  media.className = "completed-image-media";
-  media.src = src;
-  media.alt = typeof item.segment.caption === "string" ? item.segment.caption : "";
-  media.loading = "lazy";
-  preview.append(media);
+  const media2 = document.createElement("img");
+  media2.className = "completed-image-media";
+  media2.src = src;
+  media2.alt = typeof item.segment.caption === "string" ? item.segment.caption : "";
+  media2.loading = "lazy";
+  preview.append(media2);
   preview.addEventListener("click", () => replayCompletedImage(item));
   bubble.append(preview);
   const caption = typeof item.segment.caption === "string" ? item.segment.caption.trim() : "";
@@ -1790,9 +2051,9 @@ function preserveCompletedImage(item) {
   group.append(content);
   elements.lines.append(group);
 }
-function settleActiveGameResult(current, result) {
+function settleActiveGameResult(current, result2) {
   if (localActionBeat) {
-    window.queueMicrotask(() => completeLocalConfiguredApp(result));
+    window.queueMicrotask(() => completeLocalConfiguredApp(result2));
     return;
   }
   const config = current.config;
@@ -1800,10 +2061,10 @@ function settleActiveGameResult(current, result) {
   post({
     type: "episode.gameResult",
     configId: current.config.configId,
-    result
+    result: result2
   });
   closeConfiguredApp(false);
-  renderGameResult(result, null, config);
+  renderGameResult(result2, null, config);
 }
 function initializeLegacyActiveGame(current, target, context, grantedScopes) {
   const sendInit = () => target.postMessage(createLegacyGameInitMessage({
@@ -1834,7 +2095,7 @@ function initializeLegacyActiveGame(current, target, context, grantedScopes) {
       else closeConfiguredApp(true);
       return;
     }
-    if (message.type === "dokiworld-game-result" && isRecord4(message.result)) {
+    if (message.type === "dokiworld-game-result" && isRecord11(message.result)) {
       settleActiveGameResult(current, message.result);
     }
   };
@@ -1854,7 +2115,7 @@ function initializeActiveGame() {
     initializeLegacyActiveGame(current, target, context, grantedScopes);
     return;
   }
-  const runtime = isRecord4(current.app.runtime) ? current.app.runtime : {};
+  const runtime = isRecord11(current.app.runtime) ? current.app.runtime : {};
   current.host = createAppHost({
     appId: current.app.id,
     runId: activeApp.runId,
@@ -1880,7 +2141,7 @@ function initializeActiveGame() {
       else closeConfiguredApp(true);
     },
     onComplete: async (output) => {
-      if (!isRecord4(output.data)) return { status: "rejected", reason: "invalid_result" };
+      if (!isRecord11(output.data)) return { status: "rejected", reason: "invalid_result" };
       settleActiveGameResult(current, output.data);
       return { status: "accepted" };
     }
@@ -1894,20 +2155,20 @@ function closeConfiguredApp(resume = true) {
   pendingAction = null;
   if (resume) renderNext();
 }
-function completeLocalConfiguredApp(result = null) {
+function completeLocalConfiguredApp(result2 = null) {
   const beat = localActionBeat;
   const config = activeApp?.config || pendingAction?.gameConfig || {};
   localActionBeat = null;
   closeConfiguredApp(false);
-  if (isRecord4(result)) {
-    renderGameResult(result, beat, config);
+  if (isRecord11(result2)) {
+    renderGameResult(result2, beat, config);
     return;
   }
   const target = nextConfiguredBeat(beat);
   if (target) playConfiguredPath(target.id);
   else showEnd();
 }
-function completeHostedConfiguredApp(result, utterances = null) {
+function completeHostedConfiguredApp(result2, utterances = null) {
   if (hostedResultPending) {
     hostedResultPending = false;
     if (Array.isArray(utterances)) acceptEpisode(utterances);
@@ -1917,7 +2178,7 @@ function completeHostedConfiguredApp(result, utterances = null) {
   const config = activeApp?.config || pendingAction?.gameConfig || {};
   const continueWithNarrative = Array.isArray(utterances) ? () => acceptEpisode(utterances) : null;
   closeConfiguredApp(false);
-  renderGameResult(result, null, config, continueWithNarrative);
+  renderGameResult(result2, null, config, continueWithNarrative);
 }
 function requestAction(item) {
   const beatId = typeof item.segment.beatId === "string" ? item.segment.beatId : "";
@@ -1999,6 +2260,7 @@ function restartEpisode() {
   activeImage = null;
   replayingImage = false;
   dialogueSessionId = null;
+  void storage.clearCheckpoint().catch(() => void 0);
   closeConfiguredApp(false);
   elements.lines.replaceChildren();
   elements.suggestionPanel.replaceChildren();
@@ -2016,8 +2278,8 @@ function initialize(message) {
   locale = String(message.locale).toLowerCase().startsWith("zh") ? "zh-cn" : "en";
   copy = COPY[locale];
   dialogueSessionId = null;
-  appCatalog = Array.isArray(message.apps) ? message.apps.filter(isRecord4) : [];
-  const candidate = isRecord4(message.experience) ? message.experience : {};
+  appCatalog = Array.isArray(message.apps) ? message.apps.filter(isRecord11) : [];
+  const candidate = isRecord11(message.experience) ? message.experience : {};
   experience = {
     characterId: typeof candidate.characterId === "string" ? candidate.characterId : "",
     title: typeof candidate.title === "string" ? candidate.title : "",
@@ -2026,9 +2288,9 @@ function initialize(message) {
     avatarUrl: safeUrl(candidate.avatarUrl) || safeUrl(candidate.portraitUrl),
     tags: Array.isArray(candidate.tags) ? candidate.tags.filter((tag) => typeof tag === "string" && tag.trim()).slice(0, 2) : []
   };
-  runtimeConfig = isRecord4(candidate.config) ? candidate.config : null;
-  const beats = Array.isArray(runtimeConfig?.beats) ? runtimeConfig.beats.filter(isRecord4) : [];
-  const assets = Array.isArray(runtimeConfig?.assets) ? runtimeConfig.assets.filter(isRecord4) : [];
+  runtimeConfig = isRecord11(candidate.config) ? candidate.config : null;
+  const beats = Array.isArray(runtimeConfig?.beats) ? runtimeConfig.beats.filter(isRecord11) : [];
+  const assets = Array.isArray(runtimeConfig?.assets) ? runtimeConfig.assets.filter(isRecord11) : [];
   beatsById = new Map(beats.map((beat) => [beat.id, beat]));
   assetsById = new Map(assets.map((asset) => [asset.id, asset]));
   linkedBeatIds = new Set(beats.flatMap((beat) => [
@@ -2110,7 +2372,19 @@ elements.dialogueView.addEventListener("scroll", () => {
 elements.jumpLatest.addEventListener("click", () => {
   elements.dialogueView.scrollTo({ top: elements.dialogueView.scrollHeight, behavior: "smooth" });
 });
-elements.personaOpen.addEventListener("click", () => elements.personaDialog.showModal());
+elements.personaOpen.addEventListener("click", async () => {
+  if (!experience?.characterId) return;
+  elements.personaOpen.disabled = true;
+  try {
+    const selection = await persona.requestSelection(experience.characterId);
+    playerPersona = selection.persona;
+    elements.personaOpen.querySelector("span:last-child").textContent = playerPersona?.name || copy.chooseRole;
+  } catch {
+    elements.chatStatus.textContent = copy.tryAgain;
+  } finally {
+    elements.personaOpen.disabled = false;
+  }
+});
 elements.personaClose.addEventListener("click", () => elements.personaDialog.close());
 elements.personaClear.addEventListener("click", () => {
   playerPersona = null;
@@ -2132,19 +2406,51 @@ elements.personaForm.addEventListener("submit", (event) => {
   elements.personaOpen.querySelector("span:last-child").textContent = name;
   elements.personaDialog.close();
 });
-function requestGeneratedMedia(mediaType) {
+async function waitForMediaJob(job) {
+  let current = job;
+  while (current.status === "pending" || current.status === "processing") {
+    await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    current = await media.getJob(current.id);
+  }
+  return current;
+}
+async function requestGeneratedMedia(mediaType) {
   if (waitingForHost) return;
   elements.chatStatus.textContent = mediaType === "video" ? copy.generatingVideo : copy.generatingImage;
   elements.generateImage.disabled = true;
   elements.generateVideo.disabled = true;
-  post({ type: "chat.generateMedia", mediaType, playerPersona });
+  try {
+    const request = {
+      sessionId: dialogueSessionId,
+      characterId: experience?.characterId || void 0,
+      portraitUrl: experience?.portraitUrl || void 0,
+      playerPersona
+    };
+    const submitted = mediaType === "video" ? await media.generateVideo(request) : await media.generateImage({
+      ...request,
+      prompt: dialogueSessionId ? void 0 : experience?.description || experience?.title
+    });
+    const completed = await waitForMediaJob(submitted);
+    const url = completed.urls?.[0];
+    if (completed.status !== "done" || !url) throw new Error(completed.error || "Media generation failed");
+    appendGeneratedMedia(mediaType, url);
+    elements.chatStatus.textContent = "";
+  } catch (error) {
+    elements.chatStatus.textContent = error instanceof Error ? error.message : copy.tryAgain;
+  } finally {
+    elements.generateImage.disabled = false;
+    elements.generateVideo.disabled = false;
+  }
 }
-elements.generateImage.addEventListener("click", () => requestGeneratedMedia("image"));
-elements.generateVideo.addEventListener("click", () => requestGeneratedMedia("video"));
+elements.generateImage.addEventListener("click", () => void requestGeneratedMedia("image"));
+elements.generateVideo.addEventListener("click", () => void requestGeneratedMedia("video"));
 elements.ttsToggle.addEventListener("click", () => {
   ttsEnabled = !ttsEnabled;
   elements.ttsToggle.setAttribute("aria-pressed", String(ttsEnabled));
-  if (!ttsEnabled && "speechSynthesis" in window) window.speechSynthesis.cancel();
+  if (!ttsEnabled) {
+    speechAudio?.pause();
+    speechAudio = null;
+  }
 });
 elements.textSize.addEventListener("click", () => {
   const scales = [0.9, 1, 1.16, 1.3];
@@ -2176,9 +2482,52 @@ elements.appDialog.addEventListener("cancel", (event) => {
 });
 elements.appFrame.addEventListener("load", initializeActiveGame);
 dokiworld.connect({
-  onInit: ({ locale: nextLocale, input }) => {
-    const data = isRecord4(input.data) ? input.data : {};
-    initialize({ locale: nextLocale, ...data });
+  onInit: async ({ locale: nextLocale, input }) => {
+    const data = isRecord11(input.data) ? input.data : {};
+    const [checkpointResult, characterResult, personaResult, appsResult] = await Promise.allSettled([
+      storage.loadCheckpoint(),
+      character.getCurrent(),
+      data.experience?.characterId ? persona.getSelected(data.experience.characterId) : Promise.resolve({ persona: null }),
+      apps.list()
+    ]);
+    const currentCharacter = characterResult.status === "fulfilled" ? characterResult.value.character : null;
+    initialize({
+      locale: nextLocale,
+      ...data,
+      ...currentCharacter ? {
+        experience: {
+          ...isRecord11(data.experience) ? data.experience : {},
+          characterId: currentCharacter.id,
+          title: currentCharacter.name,
+          description: currentCharacter.description,
+          portraitUrl: currentCharacter.portraitUrl,
+          avatarUrl: currentCharacter.avatarUrl,
+          tags: currentCharacter.tags
+        }
+      } : {}
+    });
+    if (checkpointResult.status === "fulfilled") {
+      const checkpointData = checkpointResult.value.checkpoint?.data;
+      if (isRecord11(checkpointData) && Number.isInteger(checkpointData.dialogueSessionId)) {
+        dialogueSessionId = checkpointData.dialogueSessionId;
+      }
+    }
+    if (personaResult.status === "fulfilled") {
+      playerPersona = personaResult.value.persona;
+      elements.personaOpen.querySelector("span:last-child").textContent = playerPersona?.name || copy.chooseRole;
+    }
+    if (appsResult.status === "fulfilled") {
+      platformAppIds = new Set(appsResult.value.apps.map((app) => app.id));
+      const legacyApps = appCatalog.filter((app) => app.protocolVersion === 1);
+      appCatalog = [...legacyApps, ...appsResult.value.apps.map((app) => ({
+        ...app,
+        status: "active",
+        locales: {
+          en: { name: app.name, description: app.description || "" },
+          "zh-cn": { name: app.name, description: app.description || "" }
+        }
+      }))];
+    }
   },
   onMessage: (envelope) => {
     const message = episode.receive(envelope);

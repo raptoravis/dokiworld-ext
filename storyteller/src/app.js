@@ -6,6 +6,12 @@ import {
 } from "@dokiworld/app-sdk";
 import { createEpisodeClientExtension } from "@dokiworld/app-sdk/episode";
 import { createDialogueClientExtension } from "@dokiworld/app-sdk/dialogue";
+import { createMediaClientExtension } from "@dokiworld/app-sdk/media";
+import { createSpeechClientExtension } from "@dokiworld/app-sdk/speech";
+import { createStorageClientExtension } from "@dokiworld/app-sdk/storage";
+import { createCharacterClientExtension } from "@dokiworld/app-sdk/character";
+import { createPersonaClientExtension } from "@dokiworld/app-sdk/persona";
+import { createAppsClientExtension } from "@dokiworld/app-sdk/apps";
 import { createGameOptions } from "./game-options.js";
 
 const WORLD_ID = "storyteller";
@@ -222,10 +228,16 @@ const elements = {
 
 const dokiworld = createAppClient({
   appId: WORLD_ID,
-  extensions: ["world", "episode", "chat", "dialogue", "checkpoint"],
+  extensions: ["world", "episode", "chat", "dialogue", "media", "speech", "storage", "character", "persona", "apps", "checkpoint"],
 });
 const episode = createEpisodeClientExtension(dokiworld);
 const dialogue = createDialogueClientExtension(dokiworld);
+const media = createMediaClientExtension(dokiworld);
+const speech = createSpeechClientExtension(dokiworld);
+const storage = createStorageClientExtension(dokiworld);
+const character = createCharacterClientExtension(dokiworld);
+const persona = createPersonaClientExtension(dokiworld);
+const apps = createAppsClientExtension(dokiworld);
 let locale = "en";
 let copy = COPY.en;
 let experience = null;
@@ -250,6 +262,8 @@ let activeVideo = null;
 let activeImage = null;
 let videoWatchdog = null;
 let dialogueSessionId = null;
+let speechAudio = null;
+let platformAppIds = new Set();
 
 const VIDEO_LOAD_TIMEOUT_MS = 20_000;
 const VIDEO_PLAYBACK_GRACE_MS = 10_000;
@@ -336,17 +350,36 @@ function setComposerEnabled(enabled) {
   elements.suggest.disabled = !enabled;
 }
 
-function speak(text, force = false) {
-  if ((!ttsEnabled && !force) || !("speechSynthesis" in window) || !text.trim()) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = locale === "zh-cn" ? "zh-CN" : "en-US";
-  window.speechSynthesis.speak(utterance);
+async function speak(text, force = false) {
+  if ((!ttsEnabled && !force) || !text.trim() || !experience?.characterId) return;
+  speechAudio?.pause();
+  try {
+    const result = await speech.synthesize({
+      text,
+      characterId: experience.characterId,
+      locale,
+    });
+    speechAudio = new Audio(result.audioUrl);
+    await speechAudio.play();
+  } catch {
+    elements.chatStatus.textContent = copy.tryAgain;
+  }
 }
 
 function post(event) {
   if (!dokiworld.runId) return;
   episode.send(event);
+}
+
+function savePlatformCheckpoint() {
+  void storage.saveCheckpoint({
+    contract: "doki.world.storyteller-state",
+    version: 1,
+    data: {
+      dialogueSessionId,
+      playerPersonaId: playerPersona?.id || null,
+    },
+  }).catch(() => undefined);
 }
 
 function showWaiting() {
@@ -782,6 +815,7 @@ async function submitReply(value) {
       playerPersona,
     });
     dialogueSessionId = response.sessionId;
+    savePlatformCheckpoint();
     acceptEpisode(response.utterances);
   } catch {
     showError();
@@ -797,6 +831,7 @@ async function regenerateLatestDialogue() {
       playerPersona,
     });
     dialogueSessionId = response.sessionId;
+    savePlatformCheckpoint();
     elements.lines.querySelector(".message-group.is-ai:last-of-type")?.remove();
     acceptEpisode(response.utterances);
   } catch {
@@ -942,7 +977,7 @@ async function findConfiguredApp(gameId) {
     && entry.status !== "disabled"
     && (entry.protocolVersion === 1 || entry.protocolVersion === 2)
   ));
-  if (!app || !safeUrl(app.entryUrl)) throw new Error("app unavailable");
+  if (!app || (!platformAppIds.has(gameId) && !safeUrl(app.entryUrl))) throw new Error("app unavailable");
   return app;
 }
 
@@ -972,6 +1007,26 @@ async function openConfiguredApp(config) {
     hostedResultPending = false;
     elements.shell.dataset.phase = "app";
     const app = await findConfiguredApp(gameId);
+    if (platformAppIds.has(gameId)) {
+      const runtime = isRecord(app.runtime) ? app.runtime : {};
+      const launch = await apps.launch({
+        appId: gameId,
+        input: {
+          contract: runtime.input?.contract || "doki.game.match3-input",
+          version: runtime.input?.version || 1,
+          data: { options: createGameOptions(config) },
+        },
+      });
+      if (launch.status === "completed" && isRecord(launch.output?.data)) {
+        const current = { app, config, runId: "platform", host: null };
+        settleActiveGameResult(current, launch.output.data);
+      } else if (localActionBeat) {
+        completeLocalConfiguredApp();
+      } else {
+        renderNext();
+      }
+      return;
+    }
     const runId = `${dokiworld.runId}:${Date.now().toString(36)}`;
     activeApp = { app, config, runId, host: null };
     elements.appTitle.textContent = typeof config.title === "string" && config.title.trim()
@@ -1344,6 +1399,7 @@ function restartEpisode() {
   activeImage = null;
   replayingImage = false;
   dialogueSessionId = null;
+  void storage.clearCheckpoint().catch(() => undefined);
   closeConfiguredApp(false);
   elements.lines.replaceChildren();
   elements.suggestionPanel.replaceChildren();
@@ -1465,7 +1521,19 @@ elements.jumpLatest.addEventListener("click", () => {
   elements.dialogueView.scrollTo({ top: elements.dialogueView.scrollHeight, behavior: "smooth" });
 });
 
-elements.personaOpen.addEventListener("click", () => elements.personaDialog.showModal());
+elements.personaOpen.addEventListener("click", async () => {
+  if (!experience?.characterId) return;
+  elements.personaOpen.disabled = true;
+  try {
+    const selection = await persona.requestSelection(experience.characterId);
+    playerPersona = selection.persona;
+    elements.personaOpen.querySelector("span:last-child").textContent = playerPersona?.name || copy.chooseRole;
+  } catch {
+    elements.chatStatus.textContent = copy.tryAgain;
+  } finally {
+    elements.personaOpen.disabled = false;
+  }
+});
 elements.personaClose.addEventListener("click", () => elements.personaDialog.close());
 elements.personaClear.addEventListener("click", () => {
   playerPersona = null;
@@ -1488,20 +1556,55 @@ elements.personaForm.addEventListener("submit", (event) => {
   elements.personaDialog.close();
 });
 
-function requestGeneratedMedia(mediaType) {
+async function waitForMediaJob(job) {
+  let current = job;
+  while (current.status === "pending" || current.status === "processing") {
+    await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    current = await media.getJob(current.id);
+  }
+  return current;
+}
+
+async function requestGeneratedMedia(mediaType) {
   if (waitingForHost) return;
   elements.chatStatus.textContent = mediaType === "video" ? copy.generatingVideo : copy.generatingImage;
   elements.generateImage.disabled = true;
   elements.generateVideo.disabled = true;
-  post({ type: "chat.generateMedia", mediaType, playerPersona });
+  try {
+    const request = {
+      sessionId: dialogueSessionId,
+      characterId: experience?.characterId || undefined,
+      portraitUrl: experience?.portraitUrl || undefined,
+      playerPersona,
+    };
+    const submitted = mediaType === "video"
+      ? await media.generateVideo(request)
+      : await media.generateImage({
+          ...request,
+          prompt: dialogueSessionId ? undefined : experience?.description || experience?.title,
+        });
+    const completed = await waitForMediaJob(submitted);
+    const url = completed.urls?.[0];
+    if (completed.status !== "done" || !url) throw new Error(completed.error || "Media generation failed");
+    appendGeneratedMedia(mediaType, url);
+    elements.chatStatus.textContent = "";
+  } catch (error) {
+    elements.chatStatus.textContent = error instanceof Error ? error.message : copy.tryAgain;
+  } finally {
+    elements.generateImage.disabled = false;
+    elements.generateVideo.disabled = false;
+  }
 }
-elements.generateImage.addEventListener("click", () => requestGeneratedMedia("image"));
-elements.generateVideo.addEventListener("click", () => requestGeneratedMedia("video"));
+elements.generateImage.addEventListener("click", () => void requestGeneratedMedia("image"));
+elements.generateVideo.addEventListener("click", () => void requestGeneratedMedia("video"));
 
 elements.ttsToggle.addEventListener("click", () => {
   ttsEnabled = !ttsEnabled;
   elements.ttsToggle.setAttribute("aria-pressed", String(ttsEnabled));
-  if (!ttsEnabled && "speechSynthesis" in window) window.speechSynthesis.cancel();
+  if (!ttsEnabled) {
+    speechAudio?.pause();
+    speechAudio = null;
+  }
 });
 elements.textSize.addEventListener("click", () => {
   const scales = [0.9, 1, 1.16, 1.3];
@@ -1534,9 +1637,56 @@ elements.appDialog.addEventListener("cancel", (event) => {
 elements.appFrame.addEventListener("load", initializeActiveGame);
 
 dokiworld.connect({
-  onInit: ({ locale: nextLocale, input }) => {
+  onInit: async ({ locale: nextLocale, input }) => {
     const data = isRecord(input.data) ? input.data : {};
-    initialize({ locale: nextLocale, ...data });
+    const [checkpointResult, characterResult, personaResult, appsResult] = await Promise.allSettled([
+      storage.loadCheckpoint(),
+      character.getCurrent(),
+      data.experience?.characterId
+        ? persona.getSelected(data.experience.characterId)
+        : Promise.resolve({ persona: null }),
+      apps.list(),
+    ]);
+    const currentCharacter = characterResult.status === "fulfilled"
+      ? characterResult.value.character
+      : null;
+    initialize({
+      locale: nextLocale,
+      ...data,
+      ...(currentCharacter ? {
+        experience: {
+          ...(isRecord(data.experience) ? data.experience : {}),
+          characterId: currentCharacter.id,
+          title: currentCharacter.name,
+          description: currentCharacter.description,
+          portraitUrl: currentCharacter.portraitUrl,
+          avatarUrl: currentCharacter.avatarUrl,
+          tags: currentCharacter.tags,
+        },
+      } : {}),
+    });
+    if (checkpointResult.status === "fulfilled") {
+      const checkpointData = checkpointResult.value.checkpoint?.data;
+      if (isRecord(checkpointData) && Number.isInteger(checkpointData.dialogueSessionId)) {
+        dialogueSessionId = checkpointData.dialogueSessionId;
+      }
+    }
+    if (personaResult.status === "fulfilled") {
+      playerPersona = personaResult.value.persona;
+      elements.personaOpen.querySelector("span:last-child").textContent = playerPersona?.name || copy.chooseRole;
+    }
+    if (appsResult.status === "fulfilled") {
+      platformAppIds = new Set(appsResult.value.apps.map((app) => app.id));
+      const legacyApps = appCatalog.filter((app) => app.protocolVersion === 1);
+      appCatalog = [...legacyApps, ...appsResult.value.apps.map((app) => ({
+        ...app,
+        status: "active",
+        locales: {
+          en: { name: app.name, description: app.description || "" },
+          "zh-cn": { name: app.name, description: app.description || "" },
+        },
+      }))];
+    }
   },
   onMessage: (envelope) => {
   const message = episode.receive(envelope);

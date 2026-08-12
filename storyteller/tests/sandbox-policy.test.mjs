@@ -41,10 +41,19 @@ test("Storyteller business code uses the typed SDK extension instead of wire mes
 });
 
 test("Storyteller declares DokiWorld P0 and P1 capabilities", async () => {
-  const manifest = await readFile(new URL("../src/manifest.json", import.meta.url), "utf8").then(JSON.parse);
+  const [manifest, source] = await Promise.all([
+    readFile(new URL("../src/manifest.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../src/app.js", import.meta.url), "utf8"),
+  ]);
   for (const capability of ["media", "speech", "storage", "character", "persona", "apps"]) {
     assert.ok(manifest.runtime.extensions.includes(capability), `missing ${capability}`);
+    assert.match(source, new RegExp(`@dokiworld/app-sdk/${capability}`), `missing ${capability} SDK import`);
+    assert.match(source, new RegExp(`const ${capability} = create[A-Z][A-Za-z]+ClientExtension\\(dokiworld\\)`), `missing ${capability} adapter`);
   }
+  for (const call of ["media.generateImage", "media.generateVideo", "speech.synthesize", "storage.loadCheckpoint", "character.getCurrent", "persona.requestSelection", "apps.list", "apps.launch"]) {
+    assert.ok(source.includes(call), `missing ${call} use`);
+  }
+  assert.doesNotMatch(source, /type:\s*"chat\.generateMedia"/);
   assert.ok(manifest.contextScopes.optional.includes("character.card"));
   assert.ok(manifest.contextScopes.optional.includes("player_persona"));
 });
