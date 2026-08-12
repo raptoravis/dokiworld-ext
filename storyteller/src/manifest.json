@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "id": "storyteller",
   "kind": "world",
   "status": "active",
@@ -23,6 +23,7 @@
       "world",
       "episode",
       "chat",
+      "dialogue",
       "checkpoint"
     ]
   },

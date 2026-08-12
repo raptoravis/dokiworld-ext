@@ -1,4 +1,4 @@
-// ../../dokiworld/packages/app-sdk/src/index.js
+// ../../dokiworld.git/packages/app-sdk/src/index.js
 var APP_PROTOCOL = "dokiworld.app";
 var APP_PROTOCOL_VERSION = 2;
 var LEGACY_PROTOCOL_VERSION = 1;
@@ -197,6 +197,7 @@ function createAppClient({
   const initializedMessageIds = /* @__PURE__ */ new Set();
   const initializingMessageIds = /* @__PURE__ */ new Map();
   const pendingCompletions = /* @__PURE__ */ new Map();
+  const messageListeners = /* @__PURE__ */ new Set();
   const post2 = (message) => postToParent(scope, message, targetOrigin);
   const identity = () => {
     if (!runId) throw new Error("The app has not received init");
@@ -280,7 +281,10 @@ function createAppClient({
       await handlers.onExitDecision?.(message.payload.decision);
       return;
     }
-    if (isDeclaredExtensionMessage(message.type, extensionTypes)) await handlers.onMessage?.(message);
+    if (isDeclaredExtensionMessage(message.type, extensionTypes)) {
+      for (const listener of messageListeners) await listener(message);
+      await handlers.onMessage?.(message);
+    }
   };
   scope.addEventListener("message", handleMessage);
   const dispose = () => {
@@ -289,6 +293,7 @@ function createAppClient({
     scope.removeEventListener("message", handleMessage);
     if (readyTimer !== null) clearInterval(readyTimer);
     for (const resultId of pendingCompletions.keys()) finishCompletion(resultId, new Error("The app client was disposed"));
+    messageListeners.clear();
   };
   return Object.freeze({
     appId,
@@ -332,6 +337,11 @@ function createAppClient({
       if (!isDeclaredExtensionMessage(type, extensionTypes) || RESERVED_CLIENT_MESSAGE_TYPES.has(type) || RESERVED_HOST_MESSAGE_TYPES.has(type)) throw new Error("Invalid or undeclared app extension message type");
       return sendSession(type, payload);
     },
+    onMessage(listener) {
+      if (disposed || typeof listener !== "function") throw new Error("Invalid app client message listener");
+      messageListeners.add(listener);
+      return () => messageListeners.delete(listener);
+    },
     dispose
   });
 }
@@ -361,6 +371,7 @@ function createAppHost({
   let initializedInstanceId = null;
   let pendingExit = null;
   const completionDecisions = /* @__PURE__ */ new Map();
+  const messageListeners = /* @__PURE__ */ new Set();
   const post2 = (message) => target.postMessage(message, targetOrigin);
   const identity = () => {
     if (!instanceId) throw new Error("The app has not sent ready");
@@ -448,7 +459,10 @@ function createAppHost({
       }
       return;
     }
-    if (isDeclaredExtensionMessage(message.type, extensionTypes)) await handlers.onMessage?.(message);
+    if (isDeclaredExtensionMessage(message.type, extensionTypes)) {
+      for (const listener of messageListeners) await listener(message);
+      await handlers.onMessage?.(message);
+    }
   };
   scope.addEventListener("message", handleMessage);
   const dispose = () => {
@@ -461,6 +475,7 @@ function createAppHost({
       pendingExit.reject(new Error("The app host was disposed"));
       pendingExit = null;
     }
+    messageListeners.clear();
   };
   return Object.freeze({
     appId,
@@ -501,11 +516,16 @@ function createAppHost({
       if (!isDeclaredExtensionMessage(type, extensionTypes) || RESERVED_HOST_MESSAGE_TYPES.has(type) || RESERVED_CLIENT_MESSAGE_TYPES.has(type)) throw new Error("Invalid or undeclared host extension message type");
       return sendSession(type, payload);
     },
+    onMessage(listener) {
+      if (disposed || typeof listener !== "function") throw new Error("Invalid app host message listener");
+      messageListeners.add(listener);
+      return () => messageListeners.delete(listener);
+    },
     dispose
   });
 }
 
-// ../../dokiworld/packages/app-sdk/src/episode.js
+// ../../dokiworld.git/packages/app-sdk/src/episode.js
 var CLIENT_WIRE_TYPES = Object.freeze({
   "episode.start": "dokiworld-app-episode-start",
   "episode.restart": "dokiworld-app-episode-restart",
@@ -593,6 +613,151 @@ function createEpisodeClientExtension(client) {
     HOST_SEMANTIC_TYPES,
     HOST_VALIDATORS
   );
+}
+
+// ../../dokiworld.git/packages/app-sdk/src/dialogue.js
+var REQUEST_TYPE = "dokiworld-app-dialogue-request";
+var RESPONSE_TYPE = "dokiworld-app-dialogue-response";
+var OPERATIONS = /* @__PURE__ */ new Set([
+  "generateDialogue",
+  "regenerateDialogue",
+  "generateOpening",
+  "generateSuggestions",
+  "generateTagline"
+]);
+var INPUT_MODES = /* @__PURE__ */ new Set(["speech", "behavior", "plot"]);
+var MAX_ID_LENGTH2 = 200;
+var MAX_PAYLOAD_BYTES = 64 * 1024;
+var MAX_PAYLOAD_DEPTH = 12;
+var MAX_PAYLOAD_NODES = 2e3;
+var isRecord3 = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
+var isString2 = (value) => typeof value === "string" && value.length > 0;
+var isPositiveInteger = (value) => Number.isInteger(value) && value > 0;
+var isOptionalPositiveInteger = (value) => value === void 0 || value === null || isPositiveInteger(value);
+var isRequestId = (value) => isString2(value) && value.length <= MAX_ID_LENGTH2;
+function isBoundedJson2(value) {
+  let encoded;
+  try {
+    encoded = JSON.stringify(value);
+  } catch {
+    return false;
+  }
+  if (encoded === void 0 || new TextEncoder().encode(encoded).byteLength > MAX_PAYLOAD_BYTES) return false;
+  let nodes = 0;
+  const visit = (current, depth) => {
+    nodes += 1;
+    if (nodes > MAX_PAYLOAD_NODES || depth > MAX_PAYLOAD_DEPTH) return false;
+    if (current === null || typeof current === "string" || typeof current === "boolean") return true;
+    if (typeof current === "number") return Number.isFinite(current);
+    if (Array.isArray(current)) return current.every((item) => visit(item, depth + 1));
+    if (!isRecord3(current)) return false;
+    return Object.entries(current).every(([key, item]) => key.length <= MAX_ID_LENGTH2 && visit(item, depth + 1));
+  };
+  return visit(value, 0);
+}
+var INPUT_VALIDATORS = Object.freeze({
+  generateDialogue: (input) => isString2(input.characterId) && isString2(input.playerInput) && isOptionalPositiveInteger(input.sessionId) && (input.inputMode === void 0 || INPUT_MODES.has(input.inputMode)),
+  regenerateDialogue: (input) => isString2(input.characterId) && isOptionalPositiveInteger(input.sessionId),
+  generateOpening: (input) => isString2(input.characterId) && (input.originalOpeningLine === void 0 || typeof input.originalOpeningLine === "string"),
+  generateSuggestions: (input) => isOptionalPositiveInteger(input.sessionId) && (input.characterId === void 0 || isString2(input.characterId)) && (isPositiveInteger(input.sessionId) || isString2(input.characterId)),
+  generateTagline: (input) => isString2(input.characterId) && isOptionalPositiveInteger(input.sessionId)
+});
+var RESULT_VALIDATORS = Object.freeze({
+  generateDialogue: (result) => isRecord3(result) && isPositiveInteger(result.sessionId) && Array.isArray(result.utterances),
+  regenerateDialogue: (result) => isRecord3(result) && isPositiveInteger(result.sessionId) && Array.isArray(result.utterances),
+  generateOpening: (result) => isRecord3(result) && typeof result.openingLine === "string" && Array.isArray(result.segments),
+  generateSuggestions: (result) => isRecord3(result) && Array.isArray(result.suggestions) && result.suggestions.every((item) => typeof item === "string"),
+  generateTagline: (result) => isRecord3(result) && typeof result.tagline === "string"
+});
+function defaultId2() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+function parseResponse(message) {
+  if (!isRecord3(message) || message.type !== RESPONSE_TYPE || !isRecord3(message.payload)) return null;
+  const { requestId, operation, status } = message.payload;
+  if (!isRequestId(requestId) || !OPERATIONS.has(operation)) return null;
+  if (status === "fulfilled" && isBoundedJson2(message.payload.result) && RESULT_VALIDATORS[operation](message.payload.result)) {
+    return { requestId, operation, status, result: message.payload.result };
+  }
+  const error = message.payload.error;
+  if (status === "rejected" && isRecord3(error) && isString2(error.code) && isString2(error.message)) {
+    return { requestId, operation, status, error: { code: error.code, message: error.message } };
+  }
+  return null;
+}
+var DialogueCapabilityError = class extends Error {
+  constructor(code, message, operation) {
+    super(message);
+    this.name = "DialogueCapabilityError";
+    this.code = code;
+    this.operation = operation;
+  }
+};
+var DialogueCapabilityTimeoutError = class extends DialogueCapabilityError {
+  constructor(operation) {
+    super("timeout", `DokiWorld dialogue operation ${operation} timed out`, operation);
+    this.name = "DialogueCapabilityTimeoutError";
+  }
+};
+function createDialogueClientExtension(client, {
+  createId = defaultId2,
+  timeoutMs = 3e4
+} = {}) {
+  if (!client || typeof client.send !== "function" || typeof client.onMessage !== "function") {
+    throw new Error("Invalid dialogue client channel");
+  }
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("Invalid dialogue operation timeout");
+  const pending = /* @__PURE__ */ new Map();
+  let disposed = false;
+  const finish = (requestId, outcome) => {
+    const request = pending.get(requestId);
+    if (!request) return;
+    clearTimeout(request.timer);
+    pending.delete(requestId);
+    outcome instanceof Error ? request.reject(outcome) : request.resolve(outcome);
+  };
+  const unsubscribe = client.onMessage((message) => {
+    const response = parseResponse(message);
+    const request = response && pending.get(response.requestId);
+    if (!response || !request || request.operation !== response.operation) return;
+    if (response.status === "fulfilled") finish(response.requestId, response.result);
+    else finish(response.requestId, new DialogueCapabilityError(response.error.code, response.error.message, response.operation));
+  });
+  const invoke = (operation, input) => {
+    if (disposed) return Promise.reject(new DialogueCapabilityError("disposed", "The dialogue client was disposed", operation));
+    if (!OPERATIONS.has(operation) || !isRecord3(input) || !isBoundedJson2(input) || !INPUT_VALIDATORS[operation](input)) {
+      return Promise.reject(new DialogueCapabilityError("invalid-request", `Invalid ${operation} request`, operation));
+    }
+    const requestId = createId("dialogue-request");
+    if (!isRequestId(requestId) || pending.has(requestId)) {
+      return Promise.reject(new DialogueCapabilityError("invalid-request-id", "The dialogue request id is invalid or already in use", operation));
+    }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => finish(requestId, new DialogueCapabilityTimeoutError(operation)), timeoutMs);
+      pending.set(requestId, { operation, resolve, reject, timer });
+      try {
+        client.send(REQUEST_TYPE, { requestId, operation, input });
+      } catch (error) {
+        finish(requestId, error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  };
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    unsubscribe();
+    for (const [requestId, request] of pending) {
+      finish(requestId, new DialogueCapabilityError("disposed", "The dialogue client was disposed", request.operation));
+    }
+  };
+  return Object.freeze({
+    generateDialogue: (input) => invoke("generateDialogue", input),
+    regenerateDialogue: (input) => invoke("regenerateDialogue", input),
+    generateOpening: (input) => invoke("generateOpening", input),
+    generateSuggestions: (input) => invoke("generateSuggestions", input),
+    generateTagline: (input) => invoke("generateTagline", input),
+    dispose
+  });
 }
 
 // src/game-options.js
@@ -820,9 +985,10 @@ var elements = {
 };
 var dokiworld = createAppClient({
   appId: WORLD_ID,
-  extensions: ["world", "episode", "chat", "checkpoint"]
+  extensions: ["world", "episode", "chat", "dialogue", "checkpoint"]
 });
 var episode = createEpisodeClientExtension(dokiworld);
+var dialogue = createDialogueClientExtension(dokiworld);
 var locale = "en";
 var copy = COPY.en;
 var experience = null;
@@ -846,6 +1012,7 @@ var playerPersona = null;
 var activeVideo = null;
 var activeImage = null;
 var videoWatchdog = null;
+var dialogueSessionId = null;
 var VIDEO_LOAD_TIMEOUT_MS = 2e4;
 var VIDEO_PLAYBACK_GRACE_MS = 1e4;
 function clearVideoWatchdog() {
@@ -862,7 +1029,7 @@ function armVideoWatchdog(item, timeoutMs = VIDEO_LOAD_TIMEOUT_MS) {
   }, timeoutMs);
 }
 var replayingImage = false;
-function isRecord3(value) {
+function isRecord4(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 function safeUrl(value) {
@@ -992,13 +1159,13 @@ function showControls() {
 function episodeItems(utterances) {
   if (!Array.isArray(utterances)) return [];
   return utterances.flatMap((utterance) => {
-    if (!isRecord3(utterance) || !Array.isArray(utterance.segments)) return [];
+    if (!isRecord4(utterance) || !Array.isArray(utterance.segments)) return [];
     const speakerName = typeof utterance.speakerName === "string" ? utterance.speakerName.trim() : "";
-    return utterance.segments.filter(isRecord3).map((segment) => ({ segment, speakerName }));
+    return utterance.segments.filter(isRecord4).map((segment) => ({ segment, speakerName }));
   });
 }
 function orderedBeats() {
-  return Array.isArray(runtimeConfig?.beats) ? [...runtimeConfig.beats].filter(isRecord3).sort((a, b) => Number(a.position || 0) - Number(b.position || 0) || String(a.id).localeCompare(String(b.id))) : [];
+  return Array.isArray(runtimeConfig?.beats) ? [...runtimeConfig.beats].filter(isRecord4).sort((a, b) => Number(a.position || 0) - Number(b.position || 0) || String(a.id).localeCompare(String(b.id))) : [];
 }
 function nextConfiguredBeat(beat) {
   if (typeof beat?.nextBeatId === "string") return beatsById.get(beat.nextBeatId) || null;
@@ -1033,7 +1200,7 @@ function pathNeedsLlm(startBeatId) {
   const visited = /* @__PURE__ */ new Set();
   while (beat && !visited.has(beat.id)) {
     visited.add(beat.id);
-    if (Array.isArray(beat.utterances) && beat.utterances.some((utterance) => isRecord3(utterance) && utterance.source === "llm")) return true;
+    if (Array.isArray(beat.utterances) && beat.utterances.some((utterance) => isRecord4(utterance) && utterance.source === "llm")) return true;
     if (beat.choices || beat.action) return false;
     beat = nextConfiguredBeat(beat);
   }
@@ -1045,7 +1212,7 @@ function localPathItems(startBeatId) {
   const visited = /* @__PURE__ */ new Set();
   while (beat && !visited.has(beat.id)) {
     visited.add(beat.id);
-    const assetRefs = Array.isArray(beat.assets) ? [...beat.assets].filter(isRecord3).sort((a, b) => Number(a.position || 0) - Number(b.position || 0)) : [];
+    const assetRefs = Array.isArray(beat.assets) ? [...beat.assets].filter(isRecord4).sort((a, b) => Number(a.position || 0) - Number(b.position || 0)) : [];
     assetRefs.forEach((reference) => {
       const asset = assetsById.get(reference.assetId);
       if (!asset || !safeUrl(asset.url)) return;
@@ -1062,16 +1229,16 @@ function localPathItems(startBeatId) {
       });
     });
     (Array.isArray(beat.utterances) ? beat.utterances : []).forEach((utterance) => {
-      if (!isRecord3(utterance) || utterance.source === "llm") return;
+      if (!isRecord4(utterance) || utterance.source === "llm") return;
       (Array.isArray(utterance.segments) ? utterance.segments : []).forEach((segment) => {
-        if (!isRecord3(segment)) return;
+        if (!isRecord4(segment)) return;
         items.push({
           speakerName: experience?.title || "",
           segment: { ...segment, beatId: beat.id, localAuthored: true }
         });
       });
     });
-    if (isRecord3(beat.choices)) {
+    if (isRecord4(beat.choices)) {
       items.push({
         speakerName: experience?.title || "",
         segment: {
@@ -1085,7 +1252,7 @@ function localPathItems(startBeatId) {
       });
       break;
     }
-    if (isRecord3(beat.action)) {
+    if (isRecord4(beat.action)) {
       items.push({
         speakerName: experience?.title || "",
         segment: {
@@ -1183,8 +1350,7 @@ function renderDialogue(first) {
       regenerate.textContent = copy.regenerate;
       regenerate.addEventListener("click", () => {
         if (waitingForHost) return;
-        showChatWaiting();
-        post({ type: "chat.regenerate", playerPersona });
+        void regenerateLatestDialogue();
       });
       actions.append(regenerate);
       content.append(actions);
@@ -1302,7 +1468,7 @@ function appendCompletedVideo(item) {
   group.append(content);
   elements.lines.append(group);
 }
-function submitReply(value) {
+async function submitReply(value) {
   const playerInput = value.trim();
   if (!playerInput || waitingForHost) return;
   const group = document.createElement("article");
@@ -1319,7 +1485,71 @@ function submitReply(value) {
   group.append(speaker, bubble);
   elements.lines.append(group);
   showChatWaiting();
-  post({ type: "episode.reply", playerInput, playerPersona });
+  try {
+    const response = await dialogue.generateDialogue({
+      characterId: experience?.characterId || "",
+      playerInput,
+      sessionId: dialogueSessionId,
+      inputMode: "speech",
+      playerPersona
+    });
+    dialogueSessionId = response.sessionId;
+    acceptEpisode(response.utterances);
+  } catch {
+    showError();
+  }
+}
+async function regenerateLatestDialogue() {
+  showChatWaiting();
+  try {
+    const response = await dialogue.regenerateDialogue({
+      characterId: experience?.characterId || "",
+      sessionId: dialogueSessionId,
+      playerPersona
+    });
+    dialogueSessionId = response.sessionId;
+    elements.lines.querySelector(".message-group.is-ai:last-of-type")?.remove();
+    acceptEpisode(response.utterances);
+  } catch {
+    showError();
+  }
+}
+function renderSuggestions(items) {
+  elements.chatStatus.textContent = "";
+  elements.suggestionPanel.replaceChildren();
+  const suggestions = Array.isArray(items) ? items.filter((item) => typeof item === "string" && item.trim()).slice(0, 3) : [];
+  suggestions.forEach((suggestion) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = suggestion;
+    button.addEventListener("click", () => {
+      elements.chatInput.value = suggestion;
+      elements.suggestionPanel.classList.add("is-hidden");
+      elements.chatInput.focus();
+      elements.chatSend.disabled = false;
+    });
+    elements.suggestionPanel.append(button);
+  });
+  elements.suggestionPanel.classList.toggle("is-hidden", suggestions.length === 0);
+}
+async function requestDialogueSuggestions() {
+  elements.suggestionPanel.replaceChildren();
+  elements.suggestionPanel.classList.remove("is-hidden");
+  elements.chatStatus.textContent = copy.thinking;
+  elements.suggest.disabled = true;
+  try {
+    const response = await dialogue.generateSuggestions({
+      characterId: experience?.characterId || "",
+      sessionId: dialogueSessionId,
+      playerPersona
+    });
+    renderSuggestions(response.suggestions);
+  } catch {
+    renderSuggestions([]);
+    elements.chatStatus.textContent = copy.tryAgain;
+  } finally {
+    elements.suggest.disabled = waitingForHost;
+  }
 }
 function appendGeneratedMedia(type, url) {
   const src = safeUrl(url);
@@ -1359,7 +1589,7 @@ function appendGeneratedMedia(type, url) {
   elements.dialogueView.scrollTo({ top: elements.dialogueView.scrollHeight, behavior: "smooth" });
 }
 function renderChoices(item) {
-  const options = Array.isArray(item.segment.options) ? item.segment.options.filter((option) => isRecord3(option) && typeof option.id === "string") : [];
+  const options = Array.isArray(item.segment.options) ? item.segment.options.filter((option) => isRecord4(option) && typeof option.id === "string") : [];
   if (!options.length) return renderNext();
   presentedSegments += 1;
   hideViews();
@@ -1400,7 +1630,7 @@ function renderChoices(item) {
   window.setTimeout(() => elements.choices.querySelector("button")?.focus(), 80);
 }
 async function findConfiguredApp(gameId) {
-  const app = appCatalog.find((entry) => isRecord3(entry) && entry.id === gameId && entry.status !== "disabled" && (entry.protocolVersion === 1 || entry.protocolVersion === 2));
+  const app = appCatalog.find((entry) => isRecord4(entry) && entry.id === gameId && entry.status !== "disabled" && (entry.protocolVersion === 1 || entry.protocolVersion === 2));
   if (!app || !safeUrl(app.entryUrl)) throw new Error("app unavailable");
   return app;
 }
@@ -1456,7 +1686,7 @@ function renderGameResult(result, configuredBeat, config, onContinue = null) {
   const normalizedScore = Number(result.normalizedScore);
   score.textContent = Number.isFinite(normalizedScore) ? `${Math.round(Math.max(0, Math.min(100, normalizedScore)))} / 100` : copy.resultComplete;
   summary.append(scoreLabel, score);
-  const metrics = isRecord3(result.metrics) ? result.metrics : {};
+  const metrics = isRecord4(result.metrics) ? result.metrics : {};
   const metricDefinitions = [
     ["points", copy.resultPoints],
     ["moves", copy.resultMoves],
@@ -1604,7 +1834,7 @@ function initializeLegacyActiveGame(current, target, context, grantedScopes) {
       else closeConfiguredApp(true);
       return;
     }
-    if (message.type === "dokiworld-game-result" && isRecord3(message.result)) {
+    if (message.type === "dokiworld-game-result" && isRecord4(message.result)) {
       settleActiveGameResult(current, message.result);
     }
   };
@@ -1624,7 +1854,7 @@ function initializeActiveGame() {
     initializeLegacyActiveGame(current, target, context, grantedScopes);
     return;
   }
-  const runtime = isRecord3(current.app.runtime) ? current.app.runtime : {};
+  const runtime = isRecord4(current.app.runtime) ? current.app.runtime : {};
   current.host = createAppHost({
     appId: current.app.id,
     runId: activeApp.runId,
@@ -1650,7 +1880,7 @@ function initializeActiveGame() {
       else closeConfiguredApp(true);
     },
     onComplete: async (output) => {
-      if (!isRecord3(output.data)) return { status: "rejected", reason: "invalid_result" };
+      if (!isRecord4(output.data)) return { status: "rejected", reason: "invalid_result" };
       settleActiveGameResult(current, output.data);
       return { status: "accepted" };
     }
@@ -1669,7 +1899,7 @@ function completeLocalConfiguredApp(result = null) {
   const config = activeApp?.config || pendingAction?.gameConfig || {};
   localActionBeat = null;
   closeConfiguredApp(false);
-  if (isRecord3(result)) {
+  if (isRecord4(result)) {
     renderGameResult(result, beat, config);
     return;
   }
@@ -1768,6 +1998,7 @@ function restartEpisode() {
   activeVideo = null;
   activeImage = null;
   replayingImage = false;
+  dialogueSessionId = null;
   closeConfiguredApp(false);
   elements.lines.replaceChildren();
   elements.suggestionPanel.replaceChildren();
@@ -1784,8 +2015,9 @@ function restartEpisode() {
 function initialize(message) {
   locale = String(message.locale).toLowerCase().startsWith("zh") ? "zh-cn" : "en";
   copy = COPY[locale];
-  appCatalog = Array.isArray(message.apps) ? message.apps.filter(isRecord3) : [];
-  const candidate = isRecord3(message.experience) ? message.experience : {};
+  dialogueSessionId = null;
+  appCatalog = Array.isArray(message.apps) ? message.apps.filter(isRecord4) : [];
+  const candidate = isRecord4(message.experience) ? message.experience : {};
   experience = {
     characterId: typeof candidate.characterId === "string" ? candidate.characterId : "",
     title: typeof candidate.title === "string" ? candidate.title : "",
@@ -1794,9 +2026,9 @@ function initialize(message) {
     avatarUrl: safeUrl(candidate.avatarUrl) || safeUrl(candidate.portraitUrl),
     tags: Array.isArray(candidate.tags) ? candidate.tags.filter((tag) => typeof tag === "string" && tag.trim()).slice(0, 2) : []
   };
-  runtimeConfig = isRecord3(candidate.config) ? candidate.config : null;
-  const beats = Array.isArray(runtimeConfig?.beats) ? runtimeConfig.beats.filter(isRecord3) : [];
-  const assets = Array.isArray(runtimeConfig?.assets) ? runtimeConfig.assets.filter(isRecord3) : [];
+  runtimeConfig = isRecord4(candidate.config) ? candidate.config : null;
+  const beats = Array.isArray(runtimeConfig?.beats) ? runtimeConfig.beats.filter(isRecord4) : [];
+  const assets = Array.isArray(runtimeConfig?.assets) ? runtimeConfig.assets.filter(isRecord4) : [];
   beatsById = new Map(beats.map((beat) => [beat.id, beat]));
   assetsById = new Map(assets.map((asset) => [asset.id, asset]));
   linkedBeatIds = new Set(beats.flatMap((beat) => [
@@ -1847,7 +2079,7 @@ elements.continueForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const value = elements.continueReply.value;
   elements.continueReply.value = "";
-  submitReply(value);
+  void submitReply(value);
 });
 elements.chatInput.addEventListener("input", () => {
   elements.chatSend.disabled = waitingForHost || !elements.chatInput.value.trim();
@@ -1865,14 +2097,11 @@ elements.chatForm.addEventListener("submit", (event) => {
   const value = elements.chatInput.value;
   elements.chatInput.value = "";
   elements.chatInput.style.height = "auto";
-  submitReply(value);
+  void submitReply(value);
 });
 elements.suggest.addEventListener("click", () => {
   if (waitingForHost) return;
-  elements.suggestionPanel.replaceChildren();
-  elements.suggestionPanel.classList.remove("is-hidden");
-  elements.chatStatus.textContent = copy.thinking;
-  post({ type: "chat.suggest", playerPersona });
+  void requestDialogueSuggestions();
 });
 elements.dialogueView.addEventListener("scroll", () => {
   const distance = elements.dialogueView.scrollHeight - elements.dialogueView.scrollTop - elements.dialogueView.clientHeight;
@@ -1948,17 +2177,13 @@ elements.appDialog.addEventListener("cancel", (event) => {
 elements.appFrame.addEventListener("load", initializeActiveGame);
 dokiworld.connect({
   onInit: ({ locale: nextLocale, input }) => {
-    const data = isRecord3(input.data) ? input.data : {};
+    const data = isRecord4(input.data) ? input.data : {};
     initialize({ locale: nextLocale, ...data });
   },
   onMessage: (envelope) => {
     const message = episode.receive(envelope);
     if (!message) return;
     if (message.type === "episode.content") acceptEpisode(message.utterances);
-    if (message.type === "chat.regenerated") {
-      elements.lines.querySelector(".message-group.is-ai:last-of-type")?.remove();
-      acceptEpisode(message.utterances);
-    }
     if (message.type === "chat.media") {
       elements.chatStatus.textContent = "";
       elements.generateImage.disabled = false;
@@ -1969,24 +2194,6 @@ dokiworld.connect({
       elements.chatStatus.textContent = typeof message.error === "string" ? message.error : copy.tryAgain;
       elements.generateImage.disabled = false;
       elements.generateVideo.disabled = false;
-    }
-    if (message.type === "chat.suggestions") {
-      elements.chatStatus.textContent = "";
-      elements.suggestionPanel.replaceChildren();
-      const suggestions = Array.isArray(message.suggestions) ? message.suggestions.filter((item) => typeof item === "string" && item.trim()).slice(0, 3) : [];
-      suggestions.forEach((suggestion) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = suggestion;
-        button.addEventListener("click", () => {
-          elements.chatInput.value = suggestion;
-          elements.suggestionPanel.classList.add("is-hidden");
-          elements.chatInput.focus();
-          elements.chatSend.disabled = false;
-        });
-        elements.suggestionPanel.append(button);
-      });
-      elements.suggestionPanel.classList.toggle("is-hidden", suggestions.length === 0);
     }
     if (message.type === "episode.game" && pendingAction) void openConfiguredApp(message.gameConfig);
     if (message.type === "episode.fixedGameResult") completeHostedConfiguredApp(message.result);

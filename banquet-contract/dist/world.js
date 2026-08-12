@@ -1,4 +1,4 @@
-// ../../dokiworld/packages/app-sdk/src/index.js
+// ../../dokiworld.git/packages/app-sdk/src/index.js
 var APP_PROTOCOL = "dokiworld.app";
 var APP_PROTOCOL_VERSION = 2;
 var MAX_ID_LENGTH = 200;
@@ -179,6 +179,7 @@ function createAppClient({
   const initializedMessageIds = /* @__PURE__ */ new Set();
   const initializingMessageIds = /* @__PURE__ */ new Map();
   const pendingCompletions = /* @__PURE__ */ new Map();
+  const messageListeners = /* @__PURE__ */ new Set();
   const post = (message) => postToParent(scope, message, targetOrigin);
   const identity = () => {
     if (!runId) throw new Error("The app has not received init");
@@ -262,7 +263,10 @@ function createAppClient({
       await handlers.onExitDecision?.(message.payload.decision);
       return;
     }
-    if (isDeclaredExtensionMessage(message.type, extensionTypes)) await handlers.onMessage?.(message);
+    if (isDeclaredExtensionMessage(message.type, extensionTypes)) {
+      for (const listener of messageListeners) await listener(message);
+      await handlers.onMessage?.(message);
+    }
   };
   scope.addEventListener("message", handleMessage);
   const dispose = () => {
@@ -271,6 +275,7 @@ function createAppClient({
     scope.removeEventListener("message", handleMessage);
     if (readyTimer !== null) clearInterval(readyTimer);
     for (const resultId of pendingCompletions.keys()) finishCompletion(resultId, new Error("The app client was disposed"));
+    messageListeners.clear();
   };
   return Object.freeze({
     appId,
@@ -314,6 +319,11 @@ function createAppClient({
       if (!isDeclaredExtensionMessage(type, extensionTypes) || RESERVED_CLIENT_MESSAGE_TYPES.has(type) || RESERVED_HOST_MESSAGE_TYPES.has(type)) throw new Error("Invalid or undeclared app extension message type");
       return sendSession(type, payload);
     },
+    onMessage(listener) {
+      if (disposed || typeof listener !== "function") throw new Error("Invalid app client message listener");
+      messageListeners.add(listener);
+      return () => messageListeners.delete(listener);
+    },
     dispose
   });
 }
@@ -343,6 +353,7 @@ function createAppHost({
   let initializedInstanceId = null;
   let pendingExit = null;
   const completionDecisions = /* @__PURE__ */ new Map();
+  const messageListeners = /* @__PURE__ */ new Set();
   const post = (message) => target.postMessage(message, targetOrigin);
   const identity = () => {
     if (!instanceId) throw new Error("The app has not sent ready");
@@ -430,7 +441,10 @@ function createAppHost({
       }
       return;
     }
-    if (isDeclaredExtensionMessage(message.type, extensionTypes)) await handlers.onMessage?.(message);
+    if (isDeclaredExtensionMessage(message.type, extensionTypes)) {
+      for (const listener of messageListeners) await listener(message);
+      await handlers.onMessage?.(message);
+    }
   };
   scope.addEventListener("message", handleMessage);
   const dispose = () => {
@@ -443,6 +457,7 @@ function createAppHost({
       pendingExit.reject(new Error("The app host was disposed"));
       pendingExit = null;
     }
+    messageListeners.clear();
   };
   return Object.freeze({
     appId,
@@ -483,11 +498,16 @@ function createAppHost({
       if (!isDeclaredExtensionMessage(type, extensionTypes) || RESERVED_HOST_MESSAGE_TYPES.has(type) || RESERVED_CLIENT_MESSAGE_TYPES.has(type)) throw new Error("Invalid or undeclared host extension message type");
       return sendSession(type, payload);
     },
+    onMessage(listener) {
+      if (disposed || typeof listener !== "function") throw new Error("Invalid app host message listener");
+      messageListeners.add(listener);
+      return () => messageListeners.delete(listener);
+    },
     dispose
   });
 }
 
-// ../../dokiworld/packages/app-sdk/src/episode.js
+// ../../dokiworld.git/packages/app-sdk/src/episode.js
 var CLIENT_WIRE_TYPES = Object.freeze({
   "episode.start": "dokiworld-app-episode-start",
   "episode.restart": "dokiworld-app-episode-restart",

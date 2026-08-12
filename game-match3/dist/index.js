@@ -147,7 +147,7 @@ function unchangedMove(state2) {
   return { state: state2, valid: false, cascades: 0, scoreGained: 0, cleared: 0, steps: [] };
 }
 
-// ../../dokiworld/packages/app-sdk/src/index.js
+// ../../dokiworld.git/packages/app-sdk/src/index.js
 var APP_PROTOCOL = "dokiworld.app";
 var APP_PROTOCOL_VERSION = 2;
 var MAX_ID_LENGTH = 200;
@@ -288,6 +288,7 @@ function createAppClient({
   const initializedMessageIds = /* @__PURE__ */ new Set();
   const initializingMessageIds = /* @__PURE__ */ new Map();
   const pendingCompletions = /* @__PURE__ */ new Map();
+  const messageListeners = /* @__PURE__ */ new Set();
   const post = (message) => postToParent(scope, message, targetOrigin);
   const identity = () => {
     if (!runId) throw new Error("The app has not received init");
@@ -371,7 +372,10 @@ function createAppClient({
       await handlers.onExitDecision?.(message.payload.decision);
       return;
     }
-    if (isDeclaredExtensionMessage(message.type, extensionTypes)) await handlers.onMessage?.(message);
+    if (isDeclaredExtensionMessage(message.type, extensionTypes)) {
+      for (const listener of messageListeners) await listener(message);
+      await handlers.onMessage?.(message);
+    }
   };
   scope.addEventListener("message", handleMessage);
   const dispose = () => {
@@ -380,6 +384,7 @@ function createAppClient({
     scope.removeEventListener("message", handleMessage);
     if (readyTimer !== null) clearInterval(readyTimer);
     for (const resultId of pendingCompletions.keys()) finishCompletion(resultId, new Error("The app client was disposed"));
+    messageListeners.clear();
   };
   return Object.freeze({
     appId,
@@ -422,6 +427,11 @@ function createAppClient({
     send(type, payload = {}) {
       if (!isDeclaredExtensionMessage(type, extensionTypes) || RESERVED_CLIENT_MESSAGE_TYPES.has(type) || RESERVED_HOST_MESSAGE_TYPES.has(type)) throw new Error("Invalid or undeclared app extension message type");
       return sendSession(type, payload);
+    },
+    onMessage(listener) {
+      if (disposed || typeof listener !== "function") throw new Error("Invalid app client message listener");
+      messageListeners.add(listener);
+      return () => messageListeners.delete(listener);
     },
     dispose
   });

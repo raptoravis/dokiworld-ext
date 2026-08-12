@@ -5,6 +5,7 @@ import {
   parseLegacyAppMessage,
 } from "@dokiworld/app-sdk";
 import { createEpisodeClientExtension } from "@dokiworld/app-sdk/episode";
+import { createDialogueClientExtension } from "@dokiworld/app-sdk/dialogue";
 import { createGameOptions } from "./game-options.js";
 
 const WORLD_ID = "storyteller";
@@ -221,9 +222,10 @@ const elements = {
 
 const dokiworld = createAppClient({
   appId: WORLD_ID,
-  extensions: ["world", "episode", "chat", "checkpoint"],
+  extensions: ["world", "episode", "chat", "dialogue", "checkpoint"],
 });
 const episode = createEpisodeClientExtension(dokiworld);
+const dialogue = createDialogueClientExtension(dokiworld);
 let locale = "en";
 let copy = COPY.en;
 let experience = null;
@@ -247,6 +249,7 @@ let playerPersona = null;
 let activeVideo = null;
 let activeImage = null;
 let videoWatchdog = null;
+let dialogueSessionId = null;
 
 const VIDEO_LOAD_TIMEOUT_MS = 20_000;
 const VIDEO_PLAYBACK_GRACE_MS = 10_000;
@@ -631,8 +634,7 @@ function renderDialogue(first) {
       regenerate.textContent = copy.regenerate;
       regenerate.addEventListener("click", () => {
         if (waitingForHost) return;
-        showChatWaiting();
-        post({ type: "chat.regenerate", playerPersona });
+        void regenerateLatestDialogue();
       });
       actions.append(regenerate);
       content.append(actions);
@@ -754,7 +756,7 @@ function appendCompletedVideo(item) {
   elements.lines.append(group);
 }
 
-function submitReply(value) {
+async function submitReply(value) {
   const playerInput = value.trim();
   if (!playerInput || waitingForHost) return;
   const group = document.createElement("article");
@@ -771,7 +773,76 @@ function submitReply(value) {
   group.append(speaker, bubble);
   elements.lines.append(group);
   showChatWaiting();
-  post({ type: "episode.reply", playerInput, playerPersona });
+  try {
+    const response = await dialogue.generateDialogue({
+      characterId: experience?.characterId || "",
+      playerInput,
+      sessionId: dialogueSessionId,
+      inputMode: "speech",
+      playerPersona,
+    });
+    dialogueSessionId = response.sessionId;
+    acceptEpisode(response.utterances);
+  } catch {
+    showError();
+  }
+}
+
+async function regenerateLatestDialogue() {
+  showChatWaiting();
+  try {
+    const response = await dialogue.regenerateDialogue({
+      characterId: experience?.characterId || "",
+      sessionId: dialogueSessionId,
+      playerPersona,
+    });
+    dialogueSessionId = response.sessionId;
+    elements.lines.querySelector(".message-group.is-ai:last-of-type")?.remove();
+    acceptEpisode(response.utterances);
+  } catch {
+    showError();
+  }
+}
+
+function renderSuggestions(items) {
+  elements.chatStatus.textContent = "";
+  elements.suggestionPanel.replaceChildren();
+  const suggestions = Array.isArray(items)
+    ? items.filter((item) => typeof item === "string" && item.trim()).slice(0, 3)
+    : [];
+  suggestions.forEach((suggestion) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = suggestion;
+    button.addEventListener("click", () => {
+      elements.chatInput.value = suggestion;
+      elements.suggestionPanel.classList.add("is-hidden");
+      elements.chatInput.focus();
+      elements.chatSend.disabled = false;
+    });
+    elements.suggestionPanel.append(button);
+  });
+  elements.suggestionPanel.classList.toggle("is-hidden", suggestions.length === 0);
+}
+
+async function requestDialogueSuggestions() {
+  elements.suggestionPanel.replaceChildren();
+  elements.suggestionPanel.classList.remove("is-hidden");
+  elements.chatStatus.textContent = copy.thinking;
+  elements.suggest.disabled = true;
+  try {
+    const response = await dialogue.generateSuggestions({
+      characterId: experience?.characterId || "",
+      sessionId: dialogueSessionId,
+      playerPersona,
+    });
+    renderSuggestions(response.suggestions);
+  } catch {
+    renderSuggestions([]);
+    elements.chatStatus.textContent = copy.tryAgain;
+  } finally {
+    elements.suggest.disabled = waitingForHost;
+  }
 }
 
 function appendGeneratedMedia(type, url) {
@@ -1272,6 +1343,7 @@ function restartEpisode() {
   activeVideo = null;
   activeImage = null;
   replayingImage = false;
+  dialogueSessionId = null;
   closeConfiguredApp(false);
   elements.lines.replaceChildren();
   elements.suggestionPanel.replaceChildren();
@@ -1289,6 +1361,7 @@ function restartEpisode() {
 function initialize(message) {
   locale = String(message.locale).toLowerCase().startsWith("zh") ? "zh-cn" : "en";
   copy = COPY[locale];
+  dialogueSessionId = null;
   appCatalog = Array.isArray(message.apps) ? message.apps.filter(isRecord) : [];
   const candidate = isRecord(message.experience) ? message.experience : {};
   experience = {
@@ -1359,7 +1432,7 @@ elements.continueForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const value = elements.continueReply.value;
   elements.continueReply.value = "";
-  submitReply(value);
+  void submitReply(value);
 });
 elements.chatInput.addEventListener("input", () => {
   elements.chatSend.disabled = waitingForHost || !elements.chatInput.value.trim();
@@ -1377,14 +1450,11 @@ elements.chatForm.addEventListener("submit", (event) => {
   const value = elements.chatInput.value;
   elements.chatInput.value = "";
   elements.chatInput.style.height = "auto";
-  submitReply(value);
+  void submitReply(value);
 });
 elements.suggest.addEventListener("click", () => {
   if (waitingForHost) return;
-  elements.suggestionPanel.replaceChildren();
-  elements.suggestionPanel.classList.remove("is-hidden");
-  elements.chatStatus.textContent = copy.thinking;
-  post({ type: "chat.suggest", playerPersona });
+  void requestDialogueSuggestions();
 });
 
 elements.dialogueView.addEventListener("scroll", () => {
@@ -1472,10 +1542,6 @@ dokiworld.connect({
   const message = episode.receive(envelope);
   if (!message) return;
   if (message.type === "episode.content") acceptEpisode(message.utterances);
-  if (message.type === "chat.regenerated") {
-      elements.lines.querySelector(".message-group.is-ai:last-of-type")?.remove();
-      acceptEpisode(message.utterances);
-  }
   if (message.type === "chat.media") {
       elements.chatStatus.textContent = "";
       elements.generateImage.disabled = false;
@@ -1486,26 +1552,6 @@ dokiworld.connect({
       elements.chatStatus.textContent = typeof message.error === "string" ? message.error : copy.tryAgain;
       elements.generateImage.disabled = false;
       elements.generateVideo.disabled = false;
-  }
-  if (message.type === "chat.suggestions") {
-      elements.chatStatus.textContent = "";
-      elements.suggestionPanel.replaceChildren();
-      const suggestions = Array.isArray(message.suggestions)
-        ? message.suggestions.filter((item) => typeof item === "string" && item.trim()).slice(0, 3)
-        : [];
-      suggestions.forEach((suggestion) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = suggestion;
-        button.addEventListener("click", () => {
-          elements.chatInput.value = suggestion;
-          elements.suggestionPanel.classList.add("is-hidden");
-          elements.chatInput.focus();
-          elements.chatSend.disabled = false;
-        });
-        elements.suggestionPanel.append(button);
-      });
-      elements.suggestionPanel.classList.toggle("is-hidden", suggestions.length === 0);
   }
   if (message.type === "episode.game" && pendingAction) void openConfiguredApp(message.gameConfig);
   if (message.type === "episode.fixedGameResult") completeHostedConfiguredApp(message.result);

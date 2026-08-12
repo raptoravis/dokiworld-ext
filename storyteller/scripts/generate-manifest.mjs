@@ -31,7 +31,7 @@ const manifest = {
     protocolVersion: 2,
     input: { contract: "doki.world.storyteller-input", version: 1 },
     outputs: [{ contract: "doki.world.session-result", version: 1 }],
-    extensions: ["world", "episode", "chat", "checkpoint"],
+    extensions: ["world", "episode", "chat", "dialogue", "checkpoint"],
   },
   episodeRenderer: true,
   launchRequirements: { minPlayers: 1 },
